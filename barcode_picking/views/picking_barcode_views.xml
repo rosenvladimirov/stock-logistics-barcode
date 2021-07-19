@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <record id="stock_picking_view_form_inherit_stock_barcode" model="ir.ui.view">
+            <field name="name">stock.picking.form.inherit</field>
+            <field name="model">stock.picking</field>
+            <field name="inherit_id" ref="stock.view_picking_form"/>
+            <field name="arch" type="xml">
+                <form position="inside">
+                    <field name="_barcode_scanned" widget="barcode_handler"/>
+                </form>
+                <xpath expr="//field[@name='move_line_ids']/tree" position="inside">
+                    <field name="product_barcode" invisible="1"/>
+                    <field name="location_processed" invisible="1"/>
+                </xpath>
+                <xpath expr="//field[@name='move_line_ids']//field[@name='qty_done']" position="attributes">
+                    <attribute name="options">{'barcode_events': True}</attribute>
+                    <attribute name="widget">field_float_scannable</attribute>
+                </xpath>
+            </field>
+        </record>
+
+    </data>
+</odoo>

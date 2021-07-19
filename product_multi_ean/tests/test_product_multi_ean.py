@@ -9,55 +9,44 @@ from ..hooks import post_init_hook
 class TestProductMultiEan(TransactionCase):
     def setUp(self):
         super(TestProductMultiEan, self).setUp()
-        # Product 1
-        self.product = self.env['product.product']
-        self.product_1 = self.product.create({
-            'name': 'Test product 1',
+        self.product = self.env['product.product'].create({
+            'name': 'Test product',
         })
-        self.valid_ean_1 = '1234567890128'
-        self.valid_ean2_1 = '0123456789012'
-        # Product 2
-        self.product_2 = self.product.create({
-            'name': 'Test product 2',
-        })
-        self.valid_ean_2 = '9780471117094'
-        self.valid_ean2_2 = '4006381333931'
+        self.valid_ean = '1234567890128'
+        self.valid_ean2 = '0123456789012'
 
     def test_set_main_ean(self):
-        self.product_1.barcode = self.valid_ean_1
-        self.assertEqual(len(self.product_1.ean13_ids), 1)
-        self.assertEqual(self.product_1.ean13_ids.name, self.product_1.barcode)
+        self.product.barcode = self.valid_ean
+        self.assertEqual(len(self.product.ean13_ids), 1)
+        self.assertEqual(self.product.ean13_ids.name, self.product.barcode)
 
     def test_set_incorrect_ean(self):
-        self.product_1.barcode = self.valid_ean_1
+        with self.assertRaises(Exception):
+            self.product.barcode = '1234567890123'
+        with self.assertRaises(Exception):
+            self.product.ean13_ids = [(0, 0, {'name': '1234567890123'})]
+        self.product.barcode = self.valid_ean
         # Insert duplicated EAN13
         with self.assertRaises(Exception):
-            self.product_1.ean13_ids = [(0, 0, {'name': self.valid_ean_1})]
+            self.product.ean13_ids = [(0, 0, {'name': self.valid_ean})]
 
     def test_post_init_hook(self):
         self.env.cr.execute("""
             UPDATE product_product
             SET barcode = %s
-            WHERE id = %s""", (self.valid_ean_1, self.product_1.id))
+            WHERE id = %s""", (self.valid_ean, self.product.id))
         post_init_hook(self.env.cr, self.registry)
-        self.product_1.refresh()
-        self.assertEqual(len(self.product_1.ean13_ids), 1)
-        self.assertEqual(self.product_1.ean13_ids.name, self.valid_ean_1)
+        self.product.refresh()
+        self.assertEqual(len(self.product.ean13_ids), 1)
+        self.assertEqual(self.product.ean13_ids.name, self.valid_ean)
 
     def test_search(self):
-        self.product_1.ean13_ids = [
-            (0, 0, {'name': self.valid_ean_1}),
-            (0, 0, {'name': self.valid_ean2_1})]
-        self.product_2.ean13_ids = [
-            (0, 0, {'name': self.valid_ean_2}),
-            (0, 0, {'name': self.valid_ean2_2})]
-        products = self.product.search([('barcode', '=', self.valid_ean_1)])
+        self.product.ean13_ids = [
+            (0, 0, {'name': self.valid_ean}),
+            (0, 0, {'name': self.valid_ean2})]
+        products = self.product.search([('barcode', '=', self.valid_ean)])
         self.assertEqual(len(products), 1)
-        self.assertEqual(products, self.product_1)
-        products = self.product.search([('barcode', '=', self.valid_ean2_1)])
+        self.assertEqual(products, self.product)
+        products = self.product.search([('barcode', '=', self.valid_ean2)])
         self.assertEqual(len(products), 1)
-        self.assertEqual(products, self.product_1)
-        products = self.product.search(
-            ['|', ('barcode', '=', self.valid_ean2_1),
-             ('barcode', '=', self.valid_ean2_2)])
-        self.assertEqual(len(products), 2)
+        self.assertEqual(products, self.product)

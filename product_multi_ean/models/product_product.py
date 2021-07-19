@@ -7,6 +7,9 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 
+import logging
+_logger = logging.getLogger(__name__)
+
 
 class ProductEan13(models.Model):
     _name = 'product.ean13'
@@ -27,6 +30,18 @@ class ProductEan13(models.Model):
         comodel_name='product.product',
         required=True,
     )
+
+    @api.multi
+    @api.constrains('name')
+    @api.onchange('name')
+    def _check_name(self):
+        barcode_obj = self.env['barcode.nomenclature']
+        for record in self.filtered('name'):
+                if not barcode_obj.check_ean(record.name):
+                    raise UserError(
+                        _('You provided an invalid "EAN13 Barcode" reference. '
+                          'You may use the "Internal Reference" '
+                          'field instead.'))
 
     @api.multi
     @api.constrains('name')
@@ -66,10 +81,16 @@ class ProductProduct(models.Model):
     @api.multi
     def _inverse_barcode(self):
         for product in self:
-            if product.ean13_ids:
-                product.ean13_ids[:1].write({'name': product.barcode})
-            else:
-                self.env['product.ean13'].create(self._prepare_ean13_vals())
+            #_logger.info("ean13 inverce %s" % product.barcode)
+            if product.barcode:
+                ean13_obj = self.env['product.ean13'].sudo()
+                if product.ean13_ids:
+                    if not product.ean13_ids.search([('name', '=', product.barcode)]):
+                        ean13_obj.create(self._prepare_ean13_vals())
+
+                    #product.ean13_ids[:1].write({'name': product.barcode})
+                else:
+                    ean13_obj.create(self._prepare_ean13_vals())
 
     @api.multi
     def _prepare_ean13_vals(self):
@@ -79,18 +100,28 @@ class ProductProduct(models.Model):
             'name': self.barcode,
         }
 
+    @api.multi
+    def write(self, vals):
+        if 'barcode' in vals and not vals['barcode']: 
+            #_logger.info("ean13 %s" % vals)
+            for product in self:
+                ean13 = product.ean13_ids.search([('name', '=', product.barcode)])
+                if ean13:
+                    ean13.sudo().unlink()
+        return super(ProductProduct, self).write(vals)
+
     @api.model
     def search(self, domain, *args, **kwargs):
-        for sub_domain in list(filter(lambda x: x[0] == 'barcode', domain)):
-            domain = self._get_ean13_domain(sub_domain, domain)
-        return super(ProductProduct, self).search(domain, *args, **kwargs)
+        if list(filter(lambda x: x[0] == 'barcode', domain)):
+            ean_operator = list(
+                filter(lambda x: x[0] == 'barcode', domain)
+            )[0][1]
+            ean_value = list(
+                filter(lambda x: x[0] == 'barcode', domain)
+            )[0][2]
 
-    def _get_ean13_domain(self, sub_domain, domain):
-        ean_operator = sub_domain[1]
-        ean_value = sub_domain[2]
-        eans = self.env['product.ean13'].search(
-            [('name', ean_operator, ean_value)])
-        domain = [('ean13_ids', 'in', eans.ids)
-                  if x[0] == 'barcode' and x[2] == ean_value
-                  else x for x in domain]
-        return domain
+            eans = self.env['product.ean13'].search(
+                [('name', ean_operator, ean_value)])
+            domain = list(filter(lambda x: x[0] != 'barcode', domain))
+            domain += [('ean13_ids', 'in', eans.ids)]
+        return super(ProductProduct, self).search(domain, *args, **kwargs)

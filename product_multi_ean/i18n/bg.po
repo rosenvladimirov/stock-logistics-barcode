@@ -1,22 +1,19 @@
 # Translation of Odoo Server.
 # This file contains the translation of the following modules:
-# * product_multi_ean
+#	* product_multi_ean
 #
-# Translators:
 msgid ""
 msgstr ""
-"Project-Id-Version: stock-logistics-barcode (8.0)\n"
+"Project-Id-Version: Odoo Server 11.0-20181119\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2016-09-18 10:53+0000\n"
-"PO-Revision-Date: 2016-04-28 13:01+0000\n"
+"POT-Creation-Date: 2018-12-12 11:59+0000\n"
+"PO-Revision-Date: 2018-12-12 11:59+0000\n"
 "Last-Translator: <>\n"
-"Language-Team: Bulgarian (http://www.transifex.com/oca/OCA-stock-logistics-"
-"barcode-8-0/language/bg/)\n"
-"Language: bg\n"
+"Language-Team: \n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
-"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"Plural-Forms: \n"
 
 #. module: product_multi_ean
 #: model:ir.model.fields,field_description:product_multi_ean.field_product_ean13_create_uid
@@ -31,7 +28,7 @@ msgstr "Създадено на"
 #. module: product_multi_ean
 #: model:ir.model.fields,field_description:product_multi_ean.field_product_ean13_display_name
 msgid "Display Name"
-msgstr "Име за Показване"
+msgstr "Име за показване"
 
 #. module: product_multi_ean
 #: model:ir.model.fields,field_description:product_multi_ean.field_product_ean13_name
@@ -39,7 +36,7 @@ msgstr "Име за Показване"
 #: model:ir.ui.view,arch_db:product_multi_ean.product_normal_form_view_multi_ean13
 #: model:ir.ui.view,arch_db:product_multi_ean.product_search_form_view_multi_ean13
 msgid "EAN13"
-msgstr ""
+msgstr "EAN13"
 
 #. module: product_multi_ean
 #: model:ir.model.fields,field_description:product_multi_ean.field_product_ean13_id
@@ -49,7 +46,7 @@ msgstr "ID"
 #. module: product_multi_ean
 #: model:ir.model.fields,field_description:product_multi_ean.field_product_ean13___last_update
 msgid "Last Modified on"
-msgstr "Последно обновено на"
+msgstr "Последно променено на"
 
 #. module: product_multi_ean
 #: model:ir.model.fields,field_description:product_multi_ean.field_product_ean13_write_uid
@@ -64,13 +61,13 @@ msgstr "Последно обновено на"
 #. module: product_multi_ean
 #: model:ir.model,name:product_multi_ean.model_product_ean13
 msgid "List of EAN13 for a product."
-msgstr ""
+msgstr "List of EAN13 for a product."
 
 #. module: product_multi_ean
 #: model:ir.model,name:product_multi_ean.model_product_product
 #: model:ir.model.fields,field_description:product_multi_ean.field_product_ean13_product_id
 msgid "Product"
-msgstr ""
+msgstr "Продукт"
 
 #. module: product_multi_ean
 #: model:ir.model.fields,field_description:product_multi_ean.field_product_ean13_sequence
@@ -78,7 +75,14 @@ msgid "Sequence"
 msgstr "Последователност"
 
 #. module: product_multi_ean
-#: code:addons/product_multi_ean/models/product_product.py:39
+#: code:addons/product_multi_ean/models/product_product.py:54
 #, python-format
 msgid "The EAN13 Barcode \"%s\" already exists for product \"%s\""
-msgstr ""
+msgstr "The EAN13 Barcode \"%s\" already exists for product \"%s\""
+
+#. module: product_multi_ean
+#: code:addons/product_multi_ean/models/product_product.py:42
+#, python-format
+msgid "You provided an invalid \"EAN13 Barcode\" reference. You may use the \"Internal Reference\" field instead."
+msgstr "You provided an invalid \"EAN13 Barcode\" reference. You may use the \"Internal Reference\" field instead."
+

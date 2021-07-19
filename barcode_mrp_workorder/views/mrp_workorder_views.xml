@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record model="ir.ui.view" id="mrp_production_workcenter_form_view_inherit">
+        <field name="name">mrp.production.work.order.form</field>
+        <field name="model">mrp.workorder</field>
+        <field name="inherit_id" ref="mrp.mrp_production_workcenter_form_view_inherit"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="replace">
+                <header>
+                    <field name="state" widget="statusbar" statusbar_visible="pending,ready,progress,done"/>
+                </header>
+            </xpath>
+            <form position="inside">
+                <field name="_barcode_scanned" widget="barcode_handler"/>
+            </form>
+            <xpath expr="//field[@name='final_lot_id']" position="attributes">
+                <attribute name="options">{'barcode_events': True}</attribute>
+                <attribute name="widget">field_float_scannable</attribute>
+            </xpath>
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="add_lot_to_product" type="object" string="Create Lot/SN"
+                        class="oe_stat_button"
+                        icon="fa fa-plus-square"
+                        barcode_trigger="lot"
+                        attrs="{'invisible': ['|', '|', '|', ('is_produced', '=', True), ('working_state', '=', 'blocked'), ('state', '!=', 'progress'), ('is_user_working', '=', False)]}"/>
+                <button name="toggle_work_component" type="object"
+                        class="oe_stat_button"
+                        icon="fa fa-caret-square-o-down"
+                        style="color: #008784 !important;" attrs="{'invisible': [('work_production', '=', True)]}">
+                        <field name="work_component" widget="boolean_button"
+                            options='{"terminology": {"string_true": "Component", "hover_true": "COMPONENT", "string_false": "Production", "hover_false": "PRODUCTION"}}'/>
+                </button>
+                <button name="button_finish" type="object" string="Finish Order"
+                        class="oe_stat_button"
+                        icon="fa fa-th-list"
+                        attrs="{'invisible': ['|', ('state', '!=', 'progress'), ('is_produced', '=', False)]}"/>
+                <button name="button_start" type="object" string="Start Working"
+                        class="oe_stat_button" style="background-color: #00a04a !important; color: #fff !important;"
+                        icon="fa fa-play"
+                        barcode_trigger="validate"
+                        attrs="{'invisible': ['|', ('working_state', '=', 'blocked'), ('state', '!=', 'pending')]}"/>
+                <button name="button_start" type="object" string="Start Working"
+                        class="oe_stat_button" style="background-color: #00a04a !important; color: #fff !important;"
+                        icon="fa fa-play"
+                        barcode_trigger="validate"
+                        attrs="{'invisible': ['|', ('working_state', '=', 'blocked'), ('state', '!=', 'ready')]}"/>
+                <button name="record_production" type="object" string="Done"
+                        class="oe_stat_button" style="background-color: #00a04a !important; color: #fff !important;"
+                        icon="fa fa-floppy-o"
+                        barcode_trigger="done"
+                        attrs="{'invisible': ['|', '|', '|', ('is_produced', '=', True), ('working_state', '=', 'blocked'), ('state', '!=', 'progress'), ('is_user_working', '=', False)]}"/>
+                <button name="button_pending" type="object" string="Pause"
+                        class="oe_stat_button" style="background-color: #f0ad4e !important; color: #fff !important;"
+                        icon="fa fa-pause"
+                        barcode_trigger="pause"
+                        attrs="{'invisible': ['|', '|', ('working_state', '=', 'blocked'), ('state', 'in', ('done', 'pending', 'ready', 'cancel')), ('is_user_working', '=', False)]}"/>
+                <button name="%(mrp.act_mrp_block_workcenter_wo)d" type="action" string="Block"
+                        class="oe_stat_button" style="background-color: #dc3545 !important; color: #fff !important;"
+                        icon="fa fa-lock"
+                        context="{'default_workcenter_id': workcenter_id}"
+                        attrs="{'invisible': ['|', '|', ('working_state', '=', 'blocked'), ('state', 'in', ('done', 'pending', 'ready', 'cancel')), ('is_user_working', '=', False)]}"/>
+                <button name="button_unblock" type="object" string="Unblock"
+                        class="oe_stat_button" style="background-color: #ffc107 !important; color: #fff !important;"
+                        icon="fa fa-unlock"
+                        attrs="{'invisible': [('working_state', '!=', 'blocked')]}"/>
+                <button name="button_start" type="object" string="Continue Production"
+                        class="oe_stat_button btn-warning" style="color: #008784 !important;"
+                        icon="fa fa-forward"
+                        barcode_trigger="validate"
+                        attrs="{'invisible': ['|', '|', ('working_state', '=', 'blocked'), ('is_user_working', '=', True), ('state', 'in', ('done', 'pending', 'ready', 'cancel'))]}"/>
+                <button name="button_start" type="object" string="Continue Production"
+                        class="oe_stat_button" style="color: #008784 !important;"
+                        icon="fa fa-forward"
+                        barcode_trigger="validate"
+                        attrs="{'invisible': ['|', '|', ('production_state', '=', 'done'), ('working_state', '=', 'blocked'), ('state', '!=', 'done')]}"/>
+                <button name="button_scrap" type="object" string="Scrap"
+                        class="oe_stat_button" style="color: #008784 !important;"
+                        icon="fa fa-trash"
+                        attrs="{'invisible': [('state', 'in', ('confirmed', 'cancel'))]}"/>
+                <button name="toggle_work_production" type="object"
+                        class="oe_stat_button"
+                        icon="fa fa-adjust"
+                        style="color: #008784 !important;">
+                        <field name="work_production" widget="boolean_button"
+                            options='{"terminology": {"string_true": "Pair", "hover_true": "PAIR", "string_false": "Unpair", "hover_false": "UNPAIR"}}'/>
+                </button>
+                <button name="toggle_use_bins" type="object"
+                        class="oe_stat_button"
+                        icon="fa fa-suitcase"
+                        style="color: #008784 !important;">
+                        <field name="use_bins" widget="boolean_button"
+                            options='{"terminology": {"string_true": "Use Bins", "hover_true": "BINS USED", "string_false": "No Bins", "hover_false": "NO BINS"}}'/>
+                </button>
+                <button name="button_empty_bins" type="object" string="Empty The bins"
+                        class="oe_stat_button" style="background-color: #dc3545 !important; color: #fff !important;"
+                        icon="fa fa-trash-o"
+                        attrs="{'invisible': [('state', 'in', ('confirmed', 'cancel'))]}"/>
+                <button class="oe_stat_button" name="action_product_glabel_print" type="object"
+                    barcode_trigger="productlabel"
+                    icon="fa-tags"
+                    string="Product Labels"
+                    attrs="{'invisible': ['|', '|', '|', ('is_produced', '=', True), ('working_state', '=', 'blocked'), ('state', '!=', 'progress'), ('is_user_working', '=', False)]}"/>
+                <button class="oe_stat_button" name="action_lots_glabel_print" type="object"
+                    barcode_trigger="productlotlabel"
+                    icon="fa-tags"
+                    string="Lot Labels"
+                    attrs="{'invisible': ['|', '|', '|', ('is_produced', '=', True), ('working_state', '=', 'blocked'), ('state', '!=', 'progress'), ('is_user_working', '=', False)]}"/>
+            </xpath>
+            <!--
+            <xpath expr="//field[@name='final_lot_id']" position="attributes">
+                <attribute name="options">{'barcode_events': True}</attribute>
+                <attribute name="widget">field_float_scannable</attribute>
+            </xpath>
+            -->
+            <xpath expr="//field[@name='active_move_line_ids']" position="attributes">
+                <attribute name="context">{'work_component': work_component}</attribute>
+            </xpath>
+            <xpath expr="//field[@name='final_lot_id']" position="after">
+                <field name="final_component" readonly="1"/>
+            </xpath>
+            <xpath expr="//notebook/page[2]" position="after">
+                <page string="Holded lots">
+                    <field name="split_lot_ids" readonly="1" domain="[('workorder_id', '=', active_id)]">
+                        <tree>
+                            <field name="product_id"/>
+                            <field name="lot_id"/>
+                            <field name="qty_done"/>
+                        </tree>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

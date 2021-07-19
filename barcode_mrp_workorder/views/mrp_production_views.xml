@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="mrp_production_form_view" model="ir.ui.view">
+        <field name="name">mrp.production.form</field>
+        <field name="model">mrp.production</field>
+        <field name="inherit_id" ref="mrp.mrp_production_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook/page/field[@name='move_raw_ids']/tree/field[@name='product_uom_qty']" position="before">
+                <field name="operation_id"/>
+            </xpath>
+        </field>
+    </record>
+    <record id="mrp_production_line_form_view" model="ir.ui.view">
+        <field name="name">mrp.production.line.form</field>
+        <field name="model">mrp.production.line</field>
+        <field name="arch" type="xml">
+            <form>
+                <group>
+                    <div class="o_row">
+                        <span><field name="display_name" readonly="1" nolabel="1"/></span>
+                    </div>
+                    <group name="product" string="Product data">
+                        <field name="product_id"/>
+                        <field name="product_qty"/>
+                        <field name="lot_id"/>
+                    </group>
+                    <group name="trac" string="Tracking data">
+                        <field name="move_line_id"/>
+                        <field name="workorder_id"/>
+                        <field name="operation_id"/>
+                    </group>
+                    <group name="bom" string="Data from BOM">
+                        <field name="bom_line_id"/>
+                        <field name="extra_bom_line"/>
+                    </group>
+                </group>
+            </form>
+        </field>
+    </record>
+    <record id="mrp_production_line_tree_view" model="ir.ui.view">
+        <field name="name">mrp.production.line.tree</field>
+        <field name="model">mrp.production.line</field>
+        <field name="arch" type="xml">
+            <tree create="0" edit="0" delete="0">
+                <field name="display_name"/>
+                <field name="product_id"/>
+                <field name="bom_product_qty" sum="Total BOM Qty"/>
+                <field name="product_qty" sum="Total qty"/>
+                <field name="lot_id"/>
+                <field name="move_line_id"/>
+                <field name="workorder_id"/>
+                <field name="operation_id"/>
+                <field name="bom_line_id"/>
+                <field name="extra_bom_line"/>
+            </tree>
+        </field>
+    </record>
+    <record id="mrp_production_line_pivot_view" model="ir.ui.view">
+        <field name="name">mrp.production.line.pivot</field>
+        <field name="model">mrp.production.line</field>
+        <field name="arch" type="xml">
+            <pivot string="Consumption Analysis">
+                <field name="product_id" type="row"/>
+                <field name="operation_id" type="col"/>
+                <field name="product_qty" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+    <record id="mrp_production_line_graph_view" model="ir.ui.view">
+        <field name="name">mrp.production.line.graph</field>
+        <field name="model">mrp.production.line</field>
+        <field name="arch" type="xml">
+            <graph string="Consumption Analysis">
+                <field name="product_id" type="row"/>
+                <field name="product_qty" type="measure"/>
+                <field name="operation_id" type="col"/>
+            </graph>
+        </field>
+    </record>
+   <record id="mrp_production_line_search" model="ir.ui.view">
+        <field name="name">mrp.production.line.search</field>
+        <field name="model">mrp.production.line</field>
+        <field name="arch" type="xml">
+            <search string="Consumption Analysis">
+                <field name="product_id"/>
+                <field name="workorder_id"/>
+                <field name="operation_id"/>
+                <separator/>
+                <group expand="0" string="Group By">
+                    <filter string="Product" name="by_product" domain="[]"  context="{'group_by':'product_id'}"/>
+                    <filter string="Work order" name="by_workorder" domain="[]"  context="{'group_by':'workorder_id'}"/>
+                    <filter string="Operation" name="by_operation" domain="[]"  context="{'group_by':'operation_id'}"/>
+                    <filter string="BOM Line" name="by_bom" domain="[]"  context="{'group_by':'bom_line_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+    <record id="act_mrp_production_line_open" model="ir.actions.act_window">
+        <field name="name">Consumption Analysis</field>
+        <field name="res_model">mrp.production.line</field>
+        <field name="view_type">tree</field>
+        <field name="view_mode">tree,pivot,graph</field>
+        <field name="view_id" ref="mrp_production_line_graph_view"/>
+        <field name="search_view_id" ref="mrp_production_line_search"/>
+<!--        <field name="context">{'search_default_by_product': 1, 'search_default_by_operation': 1}</field>-->
+    </record>
+</odoo>

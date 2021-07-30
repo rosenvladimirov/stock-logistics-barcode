@@ -8,7 +8,12 @@
     """,
     'category': 'Sales',
     'version': '11.0.0.1.0',
-    'depends': ['barcodes', 'sale', 'base'],
+    'depends': [
+        'barcodes',
+        'sale',
+        'base',
+        'stock'
+    ],
     'data': [
         'views/res_config_settings.xml',
         'views/sale_barcode_views.xml',

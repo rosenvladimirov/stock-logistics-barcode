@@ -9,7 +9,7 @@
                 <field name="_barcode_scanned" widget="barcode_handler"/>
             </form>
             <field name="put_in_package" position="after">
-                <field name="only_one"/>
+                <field name="only_one" groups="base.group_no_one"/>
             </field>
         </field>
     </record>

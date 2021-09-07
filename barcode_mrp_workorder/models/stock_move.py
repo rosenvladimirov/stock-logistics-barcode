@@ -30,6 +30,11 @@ class StockMoveLine(models.Model):
     lot_produced_id = fields.Many2one(track_visibility="onchange")
     lot_id = fields.Many2one(track_visibility="onchange")
     lot_name = fields.Char(track_visibility="onchange")
+    work_as = fields.Selection([
+        ('bins', _('Use bins')),
+        ('production', _('Combination')),
+        ('component', _('Component')),
+    ], string='Rule', help='Use the rules of conduct when filling in the lines for consumption or production')
 
     @api.onchange('lot_name', 'lot_id')
     def onchange_serial_number(self):

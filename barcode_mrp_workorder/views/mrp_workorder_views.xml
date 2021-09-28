@@ -115,6 +115,9 @@
             <xpath expr="//field[@name='active_move_line_ids']" position="attributes">
                 <attribute name="context">{'work_component': work_component}</attribute>
             </xpath>
+            <xpath expr="//field[@name='active_move_line_ids']/tree" position="inside">
+                <field name="work_production" readonly="1"/>
+            </xpath>
             <xpath expr="//field[@name='final_lot_id']" position="after">
                 <field name="final_component" readonly="1"/>
             </xpath>

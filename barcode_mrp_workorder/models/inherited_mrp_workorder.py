@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 import math
+import uuid
 
 from odoo import models, fields, api, _
 from odoo.addons.mrp.models.mrp_workorder import MrpWorkorder as mrpworkorder
@@ -18,6 +19,9 @@ class MrpWorkorder(models.Model):
     _name = 'mrp.workorder'
     _inherit = ['mrp.workorder', 'barcodes.barcode_events_mixin']
 
+    def _get_default_access_token(self):
+        return str(uuid.uuid4())
+
     work_component = fields.Boolean('Component', help='Please checked it if work with component')
     work_production = fields.Boolean('Combination', help='Please checked it if work with pair product/component')
     use_bins = fields.Boolean('Bins', help='Please checked it if work with bins')
@@ -30,6 +34,7 @@ class MrpWorkorder(models.Model):
     r_move_line_ids = fields.One2many('stock.move.line', 'workorder_id', 'Moves to Track',
                                       domain=["|", ('lot_id', '!=', False), ('lot_name', '!=', False)],
                                       help="Inventory moves for which you must scan a lot number at this work order")
+    access_token = fields.Char('Security Token', copy=False, default=_get_default_access_token)
 
     @api.multi
     def _compute_final_component(self):
@@ -563,9 +568,14 @@ class MrpWorkorder(models.Model):
                         return
                 elif self.work_production or ['sub_type'] == 'pair':
                     if self._check_product(product, qty, lot, use_date):
-                        return
+                        if self._check_component(product, qty, lot, use_date):
+                            return
                 elif not self.work_component or parsed_result['sub_type'] == 'product':
                     if self._check_product(product, qty, lot, use_date):
+                        # add functionality to search for paring in bom or components lines
+                        if any([x for x in self.move_raw_ids if x.work_production]):
+                            if self._check_component(product, qty, lot, use_date):
+                                return
                         return
                 else:
                     if self._check_component(product, qty, lot, code, use_date):
@@ -582,7 +592,8 @@ class MrpWorkorder(models.Model):
                 # _logger.info("PARCE %s" % parsed_result)
                 if self.work_production or parsed_result['sub_type'] == 'pair':
                     if self._check_product(product, qty, lot, code, use_date):
-                        lRet = False
+                        rtrn = False
+                        available_quants = False
                         products = []
                         available = []
                         # first pass check in reserved material
@@ -597,7 +608,6 @@ class MrpWorkorder(models.Model):
                             available.append(product.id)
                         # second pass check in all materials
                         if not lot_id:
-                            available_quants = False
                             lot_id = self.env['stock.production.lot'].search(
                                 [('name', '=', lot), ('product_id', 'in', product_ids)],
                                 limit=1)  # Logic by product but search by lot in existing lots
@@ -628,11 +638,10 @@ class MrpWorkorder(models.Model):
                                     products.append(ml.product_id)
                         for product in products:
                             _logger.info("PRODUCT %s:%s" % (lot, product.display_name))
-                            lRet = lRet or self._check_component(product, qty, lot, code, use_date)
-                        if lRet:
-                            return
+                            self._check_component(product, qty, lot, code, use_date)
+                        return
                 elif self.work_component or not parsed_result['sub_type'] or parsed_result['sub_type'] == 'component':
-                    lChecked = False
+                    rtrn = False
                     lot_id = self.env['stock.production.lot'].search([('name', '=', lot), (
                         'product_id', 'in', product_ids)])  # Logic by product but search by lot in existing lots
                     if len([x.id for x in lot_id]) >= 1:
@@ -648,21 +657,21 @@ class MrpWorkorder(models.Model):
                             qty = sum(x.quantity for x in available_quants) or 1.0
                             product = line.product_id
                             if self._check_component(product, qty, lot, code, use_date):
-                                lChecked = True
-                        if lChecked:
-                            return
+                                return
+                        return
                     else:
                         # ml = self.active_move_line_ids.filtered(lambda ml: ml.lots_visible and not ml.lot_id)[0]
                         # if ml:
                         #   product = ml and ml[0].product_id
                         # else:
                         return
-                    # _logger.info("LOT %s" % lot_id)
-                    if self._check_component(product, qty, lot, code, use_date):
-                        return
                 elif not self.work_component or parsed_result['sub_type'] == 'product':
                     if self._check_product(product, qty, lot, code, use_date):
                         if self.production_id.product_id.tracking == 'serial' and not self.work_component and not self.work_production:
+                            # add functionality to search for paring in bom or components lines
+                            if any([x for x in self.move_raw_ids if x.work_production]):
+                                if self._check_component(product, qty, lot, use_date):
+                                    return
                             self.work_component = True
                         return
                     else:

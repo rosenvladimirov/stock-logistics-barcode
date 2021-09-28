@@ -16,12 +16,19 @@ class StockMove(models.Model):
     extra_bom_line = fields.Boolean('Is extra BOM line', help='Come from extra BOM line when start to produce')
     bom_unit_factor = fields.Float('Product Quantity', related="bom_line_id.product_qty")
     bom_product_qty = fields.Float('Unit Factor', compute="_compute_bom_product_qty")
+    work_production = fields.Boolean('Combination', related="bom_line_id.work_production", store=True,
+                                     help='Please checked it if work with pair product/component')
 
     @api.depends('production_id', 'production_id.product_qty', 'bom_line_id.product_qty')
     def _compute_bom_product_qty(self):
         for record in self:
             if record.production_id and record.bom_line_id:
                 record.bom_product_qty = record.production_id.product_qty * record.bom_line_id.product_qty
+
+    @api.multi
+    def toggle_work_production(self):
+        for record in self:
+            record.work_production = not record.work_production
 
 
 class StockMoveLine(models.Model):
@@ -35,6 +42,8 @@ class StockMoveLine(models.Model):
         ('production', _('Combination')),
         ('component', _('Component')),
     ], string='Rule', help='Use the rules of conduct when filling in the lines for consumption or production')
+    work_production = fields.Boolean('Combination', related="move_id.bom_line_id.work_production",
+                                     help='Please checked it if work with pair product/component')
 
     @api.onchange('lot_name', 'lot_id')
     def onchange_serial_number(self):

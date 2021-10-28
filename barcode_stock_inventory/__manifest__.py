@@ -12,7 +12,7 @@
         'barcodes',
         'mrp',
         'product_gs_standard',
-        #'stock_autoprint'
+        #'stock_packing_center'
         ],
     'data': [
 

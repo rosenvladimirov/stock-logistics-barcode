@@ -13,7 +13,7 @@
         'mrp',
         'stock',
         'product_gs_standard',
-        'stock_autoprint',
+        'stock_packing_center',
         'website',
         ],
     'data': [

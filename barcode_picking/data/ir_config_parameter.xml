@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<odoo noupdate="1">
+
+    <record id="default_reference_separator"
+            model="ir.config_parameter">
+        <field name="key">default_barcode_quantity</field>
+        <field name="value">False</field>
+    </record>
+
+</odoo>

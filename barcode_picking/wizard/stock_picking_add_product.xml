@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="view_stock_picking_add_product_form" model="ir.ui.view">
+            <field name="name">stock_picking.add.product.form</field>
+            <field name="model">stock_picking.add.product</field>
+            <field name="arch" type="xml">
+                <form>
+                    <field name="note" nolabel="1"/>
+                    <group>
+                        <group>
+                            <field name="picking_type_id" invisible="1"/>
+                            <field name="lot" readonly="1"/>
+                            <field name="product_id"/>
+                            <field name="lot_new" readonly="1"/>
+                            <field name="use_date" readonly="1"/>
+                        </group>
+                    </group>
+                    <footer>
+                        <button name="validate_lot" type="object" string="Validate Lot" class="btn-primary" barcode_trigger="validate"/>
+                        <button string="Cancel" class="btn-default" special="cancel" />
+                    </footer>
+                </form>
+            </field>
+        </record>
+      <record id="act_open_wizard_view_stock_picking_add_product" model="ir.actions.act_window">
+              <field name="name">Add immediately missing scanned product</field>
+              <field name="res_model">stock_picking.add.product</field>
+              <field name="view_type">form</field>
+              <field name="view_mode">form</field>
+              <field name="view_id" ref="view_stock_picking_add_product_form"/>
+              <field name="target">new</field>
+      </record>
+    </data>
+</odoo>

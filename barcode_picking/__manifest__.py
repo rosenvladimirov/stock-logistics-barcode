@@ -11,6 +11,7 @@
     'depends': ['barcodes', 'stock'],
     'data': [
         'views/picking_barcode_views.xml',
+        'wizard/stock_picking_add_product.xml',
     ],
     'demo': [
     ],

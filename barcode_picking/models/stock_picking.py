@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from odoo import models, fields, api, _
-from odoo.exceptions import UserError
-from odoo.tools.float_utils import float_compare, float_round
-
-import json
+from odoo.tools.float_utils import float_compare
 
 import logging
 _logger = logging.getLogger(__name__)
@@ -65,7 +62,6 @@ class StockPicking(models.Model):
         else:
             corresponding_ml = self.move_line_ids.filtered(lambda ml: ml.product_id.id == product.id and not ml.result_package_id and not ml.location_processed and not ml.lots_visible)
             lot_id = False
-        #_logger.info("Corespon %s:%s:%s:%s:%s" % (qty, corresponding_ml, product, lot_id, lot))
         corresponding_ml = corresponding_ml[0] if corresponding_ml else False
 
         if corresponding_ml:
@@ -151,49 +147,67 @@ class StockPicking(models.Model):
         return True
 
     def on_barcode_scanned(self, barcode):
+        lot = False
+        use_date = False
+        qty = 1.0
         if not self.picking_type_id.barcode_nomenclature_id:
             # Logic for products
-            product = self.env['product.product'].search(['|', ('barcode', '=', barcode), ('default_code', '=', barcode)], limit=1)
+            product = self.env['product.product'].search([
+                '|', ('barcode', '=', barcode), ('default_code', '=', barcode)
+            ], limit=1)
             if product:
                 if self._check_product(product):
                     return
 
-            product_packaging = self.env['product.packaging'].search([('barcode', '=', barcode)], limit=1)
+            product_packaging = self.env['product.packaging'].search([
+                ('barcode', '=', barcode)
+            ], limit=1)
             if product_packaging.product_id:
                 if self._check_product(product_packaging.product_id,product_packaging.qty):
                     return
 
             # Logic for packages in source location
             if self.move_line_ids:
-                package_source = self.env['stock.quant.package'].search([('name', '=', barcode), ('location_id', 'child_of', self.location_id.id)], limit=1)
+                package_source = self.env['stock.quant.package'].search([
+                    ('name', '=', barcode),
+                    ('location_id', 'child_of', self.location_id.id)
+                ], limit=1)
                 if package_source:
                     if self._check_source_package(package_source):
                         return
 
             # Logic for packages in destination location
-            package = self.env['stock.quant.package'].search([('name', '=', barcode), '|', ('location_id', '=', False), ('location_id','child_of', self.location_dest_id.id)], limit=1)
+            package = self.env['stock.quant.package'].search([
+                ('name', '=', barcode),
+                '|', ('location_id', '=', False), ('location_id','child_of', self.location_dest_id.id)
+            ], limit=1)
             if package:
                 if self._check_destination_package(package):
                     return
 
             # Logic only for destination location
-            location = self.env['stock.location'].search(['|', ('name', '=', barcode), ('barcode', '=', barcode)], limit=1)
-            if location and location.parent_left < self.location_dest_id.parent_right and location.parent_left >= self.location_dest_id.parent_left:
+            location = self.env['stock.location'].search([
+                '|', ('name', '=', barcode), ('barcode', '=', barcode)
+            ], limit=1)
+            if location and \
+                self.location_dest_id.parent_right > location.parent_left >= self.location_dest_id.parent_left:
                 if self._check_destination_location(location):
                     return
         else:
+            default_barcode_quantity = self.env['ir.config_parameter'].sudo().get_param('default_barcode_quantity')
             parsed_result = self.picking_type_id.barcode_nomenclature_id.parse_barcode(barcode)
-            #_logger.info("Parce result %s" % parsed_result)
+
             if parsed_result['type'] in ['weight', 'product']:
                 if parsed_result['type'] == 'weight':
                     product_barcode = parsed_result['base_code']
                     qty = parsed_result['value']
-                else: #product
+                else:
                     product_barcode = parsed_result['base_code']
-                    qty = 1.0
                     lot = parsed_result['lot']
                     use_date = parsed_result.get('use_date', False) and parsed_result['use_date'] or False
-                product = self.env['product.product'].search(['|', ('barcode', '=', product_barcode), ('default_code', '=', product_barcode)], limit=1)
+                product = self.env['product.product'].search([
+                    '|', ('barcode', '=', product_barcode), ('default_code', '=', product_barcode)
+                ], limit=1)
                 if product:
                     if self._check_product(product, qty, lot, use_date):
                         return
@@ -201,36 +215,43 @@ class StockPicking(models.Model):
             if parsed_result['type'] == 'lot':
                 lot = parsed_result['lot']
                 code = parsed_result['code']
-                lot_id = self.env['stock.production.lot'].search(["|", ('name', '=', lot), ('ref', '=', code)]) # Logic by product but search by lot in existing lots
+                lot_id = self.env['stock.production.lot'].search([
+                    "|", ('name', '=', lot), ('ref', '=', code)
+                ])
                 if len([x.id for x in lot_id]) == 1:
                     product = self.env['product.product'].browse([lot_id.product_id.id])
                     use_date = lot_id.use_date
-                    available_quants = self.env['stock.quant'].search([
-                        ('lot_id', '=', lot_id.id),
-                        ('location_id', 'child_of', self.location_id.id),
-                        ('product_id', '=', product.id),
-                        ('quantity', '!=', 0),
-                    ])
-                    qty = sum(x.quantity-x.reserved_quantity for x in available_quants) or 1.0
-                    #qty = product.qty_available_not_res or 1.0
+                    if not self.picking_type_code == 'incoming' and default_barcode_quantity:
+                        available_quants = self.env['stock.quant'].search([
+                            ('lot_id', '=', lot_id.id),
+                            ('location_id', 'child_of', self.location_id.id),
+                            ('product_id', '=', product.id),
+                            ('quantity', '!=', 0),])
+                        qty = sum(x.quantity-x.reserved_quantity for x in available_quants) or 1.0
                     if product:
                         if self._check_product(product, qty, lot, code, use_date):
                             return
 
             if parsed_result['type'] == 'package':
                 if self.move_line_ids:
-                    package_source = self.env['stock.quant.package'].search([('name', '=', parsed_result['code']), ('location_id', 'child_of', self.location_id.id)], limit=1)
+                    package_source = self.env['stock.quant.package'].search([
+                        ('name', '=', parsed_result['code']),
+                        ('location_id', 'child_of', self.location_id.id)
+                    ], limit=1)
                     if package_source:
                         if self._check_source_package(package_source):
                             return
-                package = self.env['stock.quant.package'].search([('name', '=', parsed_result['code']), '|', ('location_id', '=', False), ('location_id','child_of', self.location_dest_id.id)], limit=1)
+                package = self.env['stock.quant.package'].search([
+                    ('name', '=', parsed_result['code']),
+                    '|', ('location_id', '=', False), ('location_id','child_of', self.location_dest_id.id)
+                ], limit=1)
                 if package:
                     if self._check_destination_package(package):
                         return
 
             if parsed_result['type'] == 'location':
                 location = self.env['stock.location'].search(['|', ('name', '=', parsed_result['code']), ('barcode', '=', parsed_result['code'])], limit=1)
-                if location and location.parent_left < self.location_dest_id.parent_right and location.parent_left >= self.location_dest_id.parent_left:
+                if location and self.location_dest_id.parent_right > location.parent_left >= self.location_dest_id.parent_left:
                     if self._check_destination_location(location):
                         return
 
@@ -239,8 +260,22 @@ class StockPicking(models.Model):
                 if self._check_product(product_packaging.product_id,product_packaging.qty):
                     return
 
+        msg = _('The barcode "%(barcode)s" does\'t correspond to a proper product, '
+                'package or location. To add the scanned barcode to an existing product, '
+                'please select one from the drop-down menu below: ') % {'barcode': barcode}
+        title = _('Wrong barcode')
+        product_id = self.env['product.product'].search([('barcode', '=', barcode)])
+        action = self.env.ref('barcode_picking.act_open_wizard_view_stock_picking_add_product').read()[0]
+        action['name'] = title or action['name']
+        action['context'] = {'default_picking_type_id': self.picking_type_id.id, 'default_note': msg,
+                             'default_lot': barcode,
+                             'default_product_id': product_id and product_id[0].id or False,
+                             'default_lot_new': lot,
+                             'default_use_date': use_date}
         return {'warning': {
-            'title': _('Wrong barcode'),
-            'message': _('The barcode "%(barcode)s" doesn\'t correspond to a proper product, package or location.') % {'barcode': barcode}
+            'action': action,
+            'title': title,
+            'message': _('The barcode "%(barcode)s" does\'t correspond to a proper product, package or location.') % {
+                'barcode': barcode}
         }}
 

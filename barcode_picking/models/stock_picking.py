@@ -166,7 +166,6 @@ class StockPicking(models.Model):
                 if self._check_product(product_packaging.product_id,product_packaging.qty):
                     return
 
-            # Logic for packages in source location
             if self.move_line_ids:
                 package_source = self.env['stock.quant.package'].search([
                     ('name', '=', barcode),
@@ -176,7 +175,6 @@ class StockPicking(models.Model):
                     if self._check_source_package(package_source):
                         return
 
-            # Logic for packages in destination location
             package = self.env['stock.quant.package'].search([
                 ('name', '=', barcode),
                 '|', ('location_id', '=', False), ('location_id','child_of', self.location_dest_id.id)
@@ -185,7 +183,6 @@ class StockPicking(models.Model):
                 if self._check_destination_package(package):
                     return
 
-            # Logic only for destination location
             location = self.env['stock.location'].search([
                 '|', ('name', '=', barcode), ('barcode', '=', barcode)
             ], limit=1)

@@ -80,7 +80,18 @@ class WebsiteWorkorder(http.Controller):
                 'title': _('Wrong product ref'),
                 'message': 'The product ref is not defined!!!'
             }}
-        return self._workorder_update_json(request.env['mrp.workorder'].search([('access_token', '=', access_token)]), product_id, lot_ref, lot_id)
+        return self._workorder_update_json(request.env['mrp.workorder'].sudo().search([('access_token', '=', access_token)]), product_id, lot_ref, lot_id)
+
+    @http.route(['/workorder/save'], type='http', auth="public", website=True)
+    def workorder_save(self, access_token=None, **post):
+        workorder_id = request.env['mrp.workorder'].sudo().search([('access_token', '=', access_token)])
+        if workorder_id:
+            workorder_id.record_production()
+            return {"ok": {"title": "Communication successful", "message": "Added new row in workorder"}}
+        return {'error': {
+                    'title': _('Wrong workorder'),
+                    'message': 'To many work orders found with some name!!!'
+                }}
 
     @http.route(['/workorder/update_post'], type='http', auth="public", website=True, csrf=False)
     def workorder_update_post(self, product_id, lot_id=None, lot_ref=None, search='', **post):

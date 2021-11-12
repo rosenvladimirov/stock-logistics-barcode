@@ -9,7 +9,8 @@ _logger = logging.getLogger(__name__)
 
 
 class Repair(models.Model):
-    _inherit = 'mrp.repair'
+    _name = 'mrp.repair'
+    _inherit = ['mrp.repair', 'barcodes.barcode_events_mixin']
 
     work_component = fields.Boolean('Component', help='Please checked it if work with component')
 

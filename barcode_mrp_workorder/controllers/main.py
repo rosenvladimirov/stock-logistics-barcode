@@ -13,6 +13,7 @@ _logger = logging.getLogger(__name__)
 class WebsiteWorkorder(http.Controller):
 
     def _workorder_update_json(self, workorder_id, product_id, lot_ref, lot_id):
+        _logger.info("WO %s:%s:%s:%s:%s" % (workorder_id.ids, product_id, workorder_id.product_id.default_code, lot_ref, lot_id))
         if workorder_id and workorder_id.product_id.default_code == product_id:
             if len(workorder_id.ids) > 1:
                 retrn = {'error': {
@@ -22,18 +23,23 @@ class WebsiteWorkorder(http.Controller):
             else:
                 swith_mode = workorder_id.work_component
                 workorder_id.work_component = False
+                workorder_id.work_production = False
                 retrn = workorder_id.on_barcode_scanned(lot_ref)
-                if retrn and not retrn.get('warning'):
+                if not retrn or (retrn and not retrn.get('warning')):
                     workorder_id.work_component = True
-                    workorder_id.on_barcode_scanned(lot_id)
+                    retrn = workorder_id.on_barcode_scanned(lot_id)
+                    if retrn:
+                        retrn = {'error': retrn.get('warning')}
+                else:
+                    retrn = {'error': retrn.get('warning')}
                 workorder_id.work_component = swith_mode
-                if not retrn:
+                if retrn:
                     retrn = {'error': {
                         'title': _('Wrong lot'),
                         'message': 'The lot is not in components or in product!!!'
                     }}
                 else:
-                    retrn = {"ok": {"title": "Communication successful", "message": "Added new row in workorder"}}
+                    retrn = {"ok": {"title": "Communication successful", "message": "Added new row in work order"}}
         else:
             retrn = {'error': {
                 'title': _('Wrong workorder information'),
@@ -55,10 +61,12 @@ class WebsiteWorkorder(http.Controller):
         _logger.info("LOGIN %s:%s:%s:%s::%s" % (db, str(login), str(password), search, uid))
         if uid:
             workorder_id = request.env['mrp.workorder'].search([('name', 'ilike', str(search))])
-            _logger.info("WORKORDER %s:%s" % (workorder_id, workorder_id and workorder_id.access_token))
+            csrf_token = request.csrf_token()
+            _logger.info("WORKORDER %s::%s:%s" % (workorder_id, request.csrf_token(), workorder_id and workorder_id.access_token))
             if workorder_id:
-                if not workorder_id.access_token:
-                    workorder_id.access_token = workorder_id._get_default_access_token()
+                if csrf_token != workorder_id.access_token:
+                    workorder_id.access_token = csrf_token
+                    # workorder_id.access_token = workorder_id._get_default_access_token()
                 return json.dumps({'access_token': workorder_id.access_token})
             else:
                 return json.dumps({'error': {
@@ -82,7 +90,11 @@ class WebsiteWorkorder(http.Controller):
             }}
         return self._workorder_update_json(request.env['mrp.workorder'].sudo().search([('access_token', '=', access_token)]), product_id, lot_ref, lot_id)
 
-    @http.route(['/workorder/save'], type='http', auth="public", website=True)
+    @http.route(['/workorder/ready'], type='http', auth="public", website=True, csrf=False)
+    def workorder_ready(self, access_token=None, **post):
+        return json.dumps({'result': {"title": "Communication successful", "message": "System is available"}})
+
+    @http.route(['/workorder/save'], type='http', auth="public", website=True, csrf=False)
     def workorder_save(self, access_token=None, **post):
         workorder_id = request.env['mrp.workorder'].sudo().search([('access_token', '=', access_token)])
         if workorder_id:
@@ -94,8 +106,8 @@ class WebsiteWorkorder(http.Controller):
                 }}
 
     @http.route(['/workorder/update_post'], type='http', auth="public", website=True, csrf=False)
-    def workorder_update_post(self, product_id, lot_id=None, lot_ref=None, search='', **post):
-        _logger.info('HTTP %s:%s:%s:%s in %s' % (product_id, lot_id, lot_ref, search, request.env['mrp.workorder']))
+    def workorder_update_post(self, product_id, lot_id=None, lot_ref=None, search='', access_token=None, **post):
+        _logger.info('HTTP %s:%s:%s:%s in %s:%s' % (product_id, lot_id, lot_ref, search, request.env['mrp.workorder'], access_token))
         if lot_id is None or lot_ref is None:
             return json.dumps({'error': {
                 'title': _('Wrong lots'),
@@ -106,7 +118,7 @@ class WebsiteWorkorder(http.Controller):
                 'title': _('Wrong product ref'),
                 'message': 'The product ref is not defined!!!'
             }})
-        return json.dumps(self._workorder_update_json(request.env['mrp.workorder'].search([('name', 'ilike', str(search))]), product_id, lot_ref, lot_id))
+        return json.dumps(self._workorder_update_json(request.env['mrp.workorder'].sudo().search([('access_token', '=', str(access_token))]), product_id, lot_ref, lot_id))
 
     @http.route(['/workorder/update_json'], type='json', auth="public", methods=['POST'], website=True, csrf=False)
     def workorder_update_json(self, product_id=None, lot_id=None, lot_ref=None, search='', **post):

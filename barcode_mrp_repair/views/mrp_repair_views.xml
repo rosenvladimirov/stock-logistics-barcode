@@ -12,8 +12,7 @@
                 <xpath expr="//div[@name='button_box']" position="inside">
                     <button name="toggle_work_component" type="object"
                             class="oe_stat_button"
-                            icon="fa fa-caret-square-o-down"
-                            style="color: #008784 !important;" attrs="{'invisible': [('work_production', '=', True)]}">
+                            icon="fa fa-caret-square-o-down">
                             <field name="work_component" widget="boolean_button"
                                 options='{"terminology": {"string_true": "Component", "hover_true": "COMPONENT", "string_false": "Production", "hover_false": "PRODUCTION"}}'/>
                     </button>

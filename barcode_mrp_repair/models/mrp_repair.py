@@ -12,12 +12,32 @@ class Repair(models.Model):
     _name = 'mrp.repair'
     _inherit = ['mrp.repair', 'barcodes.barcode_events_mixin']
 
+    @api.model
+    def _default_picking_type_id(self):
+        warehouse = self.env['stock.warehouse'].search([], limit=1)
+        if warehouse:
+            return warehouse.int_type_id.id
+        return False
+
     work_component = fields.Boolean('Component', help='Please checked it if work with component')
+    picking_type_id = fields.Many2one('stock.picking.type', 'Operation Type', required=True, readonly=True,
+                                      states={'draft': [('readonly', False)]}, default=_default_picking_type_id)
 
     @api.multi
     def toggle_work_component(self):
         for record in self:
             record.work_component = not record.work_component
+
+    @api.onchange('location_id')
+    def _onchange_location(self):
+        args = self.repair_id.company_id and [('company_id', '=', self.repair_id.company_id.id)] or []
+        warehouse = self.env['stock.warehouse'].search(args, limit=1)
+        if self.location_id.usage == 'internal':
+            self.picking_type_id = warehouse.int_type_id
+        elif self.location_id.usage == 'production':
+            self.picking_type_id = warehouse.manu_type_id
+        else:
+            self.picking_type_id = warehouse.int_type_id
 
     def _check_product(self, product, qty=1.0, lot=False, code=False, use_date=False):
         lot_obj = self.env['stock.production.lot']
@@ -116,7 +136,7 @@ class Repair(models.Model):
 
     def on_barcode_scanned(self, barcode):
         message = _('The barcode "%(barcode)s" doesn\'t correspond to a proper product, package or location.')
-        picking_type_id = self.production_id.picking_type_id
+        picking_type_id = self.picking_type_id
         if not picking_type_id.barcode_nomenclature_id:
             product = self.env['product.product'].search(
                 ['|', ('barcode', '=', barcode), ('default_code', '=', barcode)], limit=1)
@@ -160,7 +180,7 @@ class Repair(models.Model):
 
             if parsed_result['type'] in ['lot']:
                 product = self.product_id
-                location_id = self.production_id.location_src_id
+                location_id = self.location_id
                 qty = 1.0
                 use_date = False
                 lot = parsed_result['lot']
@@ -189,7 +209,7 @@ class Repair(models.Model):
                         return
                 elif not self.work_component or parsed_result['sub_type'] == 'product':
                     if self._check_product(product, qty, lot, code, use_date):
-                        if self.production_id.product_id.tracking == 'serial' and not self.work_component and not self.work_production:
+                        if self.product_id.tracking == 'serial' and not self.work_component:
                             # add functionality to search for paring in bom or components lines
                             if any([x for x in self.move_raw_ids if x.work_production]):
                                 if self._check_component(product, qty, lot, use_date):
@@ -227,5 +247,3 @@ class Repair(models.Model):
             'message': message % {
                 'barcode': barcode}
         }}
-
-

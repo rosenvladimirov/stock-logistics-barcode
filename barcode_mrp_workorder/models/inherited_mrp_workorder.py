@@ -398,12 +398,11 @@ class MrpWorkorder(models.Model):
         # _logger.info("FINAL %s:%s %s" % (self.qty_producing, self.qty_produced, self.product_id and self.product_id.name or "no product"))
         return True
 
-    def _check_product_create(self, lot_ref, product, use_date, force_name=False):
-        lot = False
-        if not lot_ref:
+    def _check_product_create(self, lot, product, use_date):
+        if not lot:
             lot = self.env['ir.sequence'].next_by_code('stock.lot.serial')
         return {
-            'name': lot_ref if force_name else lot,
+            'name': lot,
             'product_id': product.id,
             'use_date': use_date
         }

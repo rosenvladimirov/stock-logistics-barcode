@@ -24,14 +24,22 @@ class WebsiteWorkorder(http.Controller):
                 swith_mode = workorder_id.work_component
                 workorder_id.work_component = False
                 workorder_id.work_production = False
-                retrn = workorder_id.on_barcode_scanned(lot_ref)
-                if not retrn or (retrn and not retrn.get('warning')):
-                    workorder_id.work_component = True
-                    retrn = workorder_id.on_barcode_scanned(lot_id)
-                    if retrn:
-                        retrn = {'error': retrn.get('warning')}
-                else:
+                final_lot_id = self.env['stock.production.lot'].search([('product_id', '=', workorder_id.product_id.id) ,('name', '=', lot_ref)])
+                if final_lot_id:
+                    return {'error': {
+                        'title': _('Wrong lot'),
+                        'message': 'The lot is exist in database!!!'
+                    }}
+                workorder_id.final_lot_id = workorder_id._check_product_create(self, lot_ref, workorder_id.product_id,
+                                                                               False, force_name=True)
+                # retrn = workorder_id.on_barcode_scanned(lot_ref)
+                # if not retrn or (retrn and not retrn.get('warning')):
+                workorder_id.work_component = True
+                retrn = workorder_id.on_barcode_scanned(lot_id)
+                if retrn:
                     retrn = {'error': retrn.get('warning')}
+                # else:
+                #     retrn = {'error': retrn.get('warning')}
                 workorder_id.work_component = swith_mode
                 if retrn:
                     retrn = {'error': {

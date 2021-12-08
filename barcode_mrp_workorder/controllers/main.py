@@ -30,12 +30,12 @@ class WebsiteWorkorder(http.Controller):
                         'title': _('Wrong lot'),
                         'message': 'The lot is exist in database!!!'
                     }}
-                lot_id = workorder_id.env['stock.production.lot'].create({
+                final_lot_id = workorder_id.env['stock.production.lot'].create({
                     'name': lot_ref,
                     'product_id': workorder_id.product_id.id,
                 })
-                if lot_id:
-                    workorder_id.final_lot_id = lot_id
+                if final_lot_id:
+                    workorder_id.final_lot_id = final_lot_id
                     retrn = False
                 else:
                     retrn = {'warning': {
@@ -57,6 +57,7 @@ class WebsiteWorkorder(http.Controller):
                         'message': 'The lot is not in components or in product!!!'
                     }}
                 else:
+                    workorder_id.record_production()
                     retrn = {"ok": {"title": "Communication successful", "message": "Added new row in work order"}}
         else:
             retrn = {'error': {

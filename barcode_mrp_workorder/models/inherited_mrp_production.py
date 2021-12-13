@@ -55,7 +55,7 @@ class MrpProductionLine(models.Model):
     def _compute_display_name(self):
         for record in self:
             if record.operation_id:
-                record.display_name = "%s->%s" % (record.workorder_id.name, record.operation_id.name)
+                record.display_name = "%s(%s)" % (record.workorder_id.name, record.operation_id.name)
             else:
                 record.display_name = record.workorder_id.name
 

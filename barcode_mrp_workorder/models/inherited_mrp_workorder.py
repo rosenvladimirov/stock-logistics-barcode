@@ -231,7 +231,8 @@ class MrpWorkorder(models.Model):
             raise UserError(_('Please set the quantity you are currently producing. It should be different from zero.'))
 
         if (self.production_id.product_id.tracking != 'none') and not self.final_lot_id and self.move_raw_ids:
-            raise UserError(_('You should provide a lot/serial number for the final product'))
+            if not self._context.get('silent_check', False):
+                raise UserError(_('You should provide a lot/serial number for the final product'))
 
         # Update quantities done on each raw material line
         # For each untracked component without any 'temporary' move lines,
@@ -662,6 +663,13 @@ class MrpWorkorder(models.Model):
                                 return
                         return
                     else:
+                        if self._context.get('consume_additional', False):
+                            product = self.active_move_line_ids and self.active_move_line_ids[0].product_id or False
+                            if product:
+                                lot_id = self.env['stock.production.lot'].create({'name': lot, 'product_id': product.id})
+                                if self._check_component(product, qty, lot, code, use_date):
+                                    return
+
                         # ml = self.active_move_line_ids.filtered(lambda ml: ml.lots_visible and not ml.lot_id)[0]
                         # if ml:
                         #   product = ml and ml[0].product_id

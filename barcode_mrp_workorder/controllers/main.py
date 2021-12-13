@@ -45,7 +45,7 @@ class WebsiteWorkorder(http.Controller):
                 # retrn = workorder_id.on_barcode_scanned(lot_ref)
                 if not retrn or (retrn and not retrn.get('warning')):
                     workorder_id.work_component = True
-                    retrn = workorder_id.on_barcode_scanned(lot_id)
+                    retrn = workorder_id.with_context(dict(workorder_id._context, consume_additional=True)).on_barcode_scanned(lot_id)
                     if retrn:
                         retrn = {'error': retrn.get('warning')}
                 else:

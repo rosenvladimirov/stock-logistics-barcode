@@ -248,7 +248,8 @@ class MrpWorkorder(models.Model):
                         self.qty_producing / move.workorder_id.operation_id.workcenter_id.capacity)
                     time_cycle = move.workorder_id.operation_id.get_time_cycle(quantity=self.qty_producing,
                                                                                product=self.product_id)
-                    duration_expected = move.bom_line_id.product_qty * ((cycle_number * time_cycle * 100.0 / move.workorder_id.operation_id.workcenter_id.time_efficiency) * 60)
+                    duration_expected = move.bom_line_id.product_qty * ((
+                                                                                cycle_number * time_cycle * 100.0 / move.workorder_id.operation_id.workcenter_id.time_efficiency) * 60)
                     _logger.info("TIME duration_expected=%s, time_cycle=%s, cycle_number=%s, move=%s" % (
                         duration_expected, time_cycle, cycle_number, move._get_move_lines()))
                     move._generate_consumed_move_line(duration_expected, self.final_lot_id)
@@ -647,9 +648,11 @@ class MrpWorkorder(models.Model):
                     rtrn = False
                     lot_id = self.env['stock.production.lot'].search([('name', '=', lot), (
                         'product_id', 'in', product_ids)])  # Logic by product but search by lot in existing lots
-                    if len([x.id for x in lot_id]) >= 1:
+                    if len(lot_id.ids) >= 1:
+                        _logger.info("PRODUCTS %s(%s)" % (product_ids, lot_id.name))
                         for line in lot_id:
-                            product = self.env['product.product'].browse([line.product_id.id])
+                            product = line.product_id
+                            # product = self.env['product.product'].browse([line.product_id.id])
                             available_quants = self.env['stock.quant'].search([
                                 ('lot_id', '=', line.id),
                                 ('location_id', 'child_of', location_id.id),
@@ -658,7 +661,6 @@ class MrpWorkorder(models.Model):
                             ])
                             use_date = line.use_date
                             qty = sum(x.quantity for x in available_quants) or 1.0
-                            product = line.product_id
                             if self._check_component(product, qty, lot, code, use_date):
                                 return
                         return
@@ -666,7 +668,8 @@ class MrpWorkorder(models.Model):
                         if self._context.get('consume_additional', False):
                             product = self.active_move_line_ids and self.active_move_line_ids[0].product_id or False
                             if product:
-                                lot_id = self.env['stock.production.lot'].create({'name': lot, 'product_id': product.id})
+                                lot_id = self.env['stock.production.lot'].create(
+                                    {'name': lot, 'product_id': product.id})
                                 if self._check_component(product, qty, lot, code, use_date):
                                     return
 

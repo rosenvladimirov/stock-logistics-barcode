@@ -2,7 +2,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from odoo import api, fields, models, _
-
+from odoo.addons.mrp_repair.models.mrp_repair import Repair as repair
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -23,6 +23,14 @@ class Repair(models.Model):
     picking_type_id = fields.Many2one('stock.picking.type', 'Operation Type', required=True, readonly=True,
                                       states={'draft': [('readonly', False)]}, default=_default_picking_type_id)
 
+    @api.onchange('product_id')
+    def onchange_product_id(self):
+        self.guarantee_limit = False
+        if not self._context.get('no_erase_lot', False):
+            self.lot_id = False
+        if self.product_id:
+            self.product_uom = self.product_id.uom_id.id
+
     @api.multi
     def toggle_work_component(self):
         for record in self:
@@ -30,7 +38,7 @@ class Repair(models.Model):
 
     @api.onchange('location_id')
     def _onchange_location(self):
-        args = self.repair_id.company_id and [('company_id', '=', self.repair_id.company_id.id)] or []
+        args = self.company_id and [('company_id', '=', self.company_id.id)] or []
         warehouse = self.env['stock.warehouse'].search(args, limit=1)
         if self.location_id.usage == 'internal':
             self.picking_type_id = warehouse.int_type_id
@@ -54,12 +62,15 @@ class Repair(models.Model):
                 ('product_id', '=', product.id),
                 ('quantity', '>', 0),
             ], limit=1)
-            if not available_quants:
-                lot_id = False
+            # if not available_quants:
+            #     lot_id = False
         if lot_id:
-            self.final_lot_id = lot_id
-            self.product_qty = qty
-        # _logger.info("LOT SAVED %s" % self.final_lot_id)
+            self.product_id = product
+            self.lot_id = lot_id
+            # self.product_qty = qty
+            # self.location_id = lot_id.location_id
+            # self.location_dest_id = lot_id.location_id
+        _logger.info("LOT SAVED %s" % self.lot_id)
         return True
 
     def _check_component(self, product, qty=1.0, lot=False, code=False, use_date=False):
@@ -128,7 +139,7 @@ class Repair(models.Model):
                 'product_uom_qty': lot_id and qty or 0.0,
                 'lot_id': lot_id and lot_id.id,
             })
-            self.active_move_line_ids += new_line
+            self.operations += new_line
             corresponding_ml = new_line
         if corresponding_ml:
             corresponding_ml.onchange_product_id()
@@ -163,16 +174,8 @@ class Repair(models.Model):
                 if self.work_component or ['sub_type'] == 'component':
                     if self._check_component(product, qty, lot, use_date):
                         return
-                elif self.work_production or ['sub_type'] == 'pair':
-                    if self._check_product(product, qty, lot, use_date):
-                        if self._check_component(product, qty, lot, use_date):
-                            return
                 elif not self.work_component or parsed_result['sub_type'] == 'product':
                     if self._check_product(product, qty, lot, use_date):
-                        # add functionality to search for paring in bom or components lines
-                        if any([x for x in self.move_raw_ids if x.work_production]):
-                            if self._check_component(product, qty, lot, use_date):
-                                return
                         return
                 else:
                     if self._check_component(product, qty, lot, code, use_date):
@@ -185,8 +188,9 @@ class Repair(models.Model):
                 use_date = False
                 lot = parsed_result['lot']
                 code = parsed_result['code']
-                product_ids = [x.product_id.id for x in self.move_raw_ids]
-                # _logger.info("PARCE %s" % parsed_result)
+                product_ids = [x.product_id.id for x in self.operations]
+
+                _logger.info("PARCE %s(%s)" % (parsed_result, self.work_component))
                 if self.work_component or not parsed_result['sub_type'] or parsed_result['sub_type'] == 'component':
                     lot_id = self.env['stock.production.lot'].search([('name', '=', lot), (
                         'product_id', 'in', product_ids)])  # Logic by product but search by lot in existing lots
@@ -208,20 +212,17 @@ class Repair(models.Model):
                     else:
                         return
                 elif not self.work_component or parsed_result['sub_type'] == 'product':
-                    if self._check_product(product, qty, lot, code, use_date):
-                        if self.product_id.tracking == 'serial' and not self.work_component:
-                            # add functionality to search for paring in bom or components lines
-                            if any([x for x in self.move_raw_ids if x.work_production]):
-                                if self._check_component(product, qty, lot, use_date):
-                                    return
-                            self.work_component = True
+                    lot_id = self.env['stock.production.lot'].search([('name', '=', lot)])
+                    _logger.info("LOT FOUND %s" % lot_id)
+                    if lot_id:
+                        product = lot_id[-1].product_id
+                    if self.with_context(dict(self._context, no_erase_lot=True))._check_product(product, qty, lot, code, use_date):
                         return
                     else:
                         message = _('The barcode "%(barcode)s" maybe is serial and is added to a product')
                 else:
-                    lot_id = self.env['stock.production.lot'].search(
-                        [('name', '=', lot), ('product_id', 'in', product_ids)],
-                        limit=1)  # Logic by product but search by lot in existing lots
+                    lot_id = self.env['stock.production.lot'].search([('name', '=', lot)])
+                    # Logic by product but search by lot in existing lots
                     if len([x.id for x in lot_id]) == 1:
                         product = self.env['product.product'].browse([lot_id.product_id.id])
                         available_quants = self.env['stock.quant'].search([
@@ -234,11 +235,11 @@ class Repair(models.Model):
                         qty = sum(x.quantity for x in available_quants) or 1.0
                         product = lot_id.product_id
                     else:
-                        ml = self.active_move_line_ids.filtered(lambda ml: ml.lots_visible and not ml.lot_id)[0]
+                        ml = self.operations.filtered(lambda ml: ml.lots_visible and not ml.lot_id)[0]
                         if ml:
                             product = ml and ml[0].product_id
                         else:
-                            return
+                            product = ml[0]
                     if self._check_component(product, qty, lot, code, use_date):
                         return
 
@@ -247,3 +248,6 @@ class Repair(models.Model):
             'message': message % {
                 'barcode': barcode}
         }}
+
+
+repair.onchange_product_id = Repair.onchange_product_id

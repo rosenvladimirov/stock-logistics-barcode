@@ -132,6 +132,10 @@
                     </field>
                 </page>
             </xpath>
+            <xpath expr="//group/group[1]" position="inside">
+                <field name="user_price_unit"/>
+                <field name="material_price_unit"/>
+            </xpath>
         </field>
     </record>
 </odoo>

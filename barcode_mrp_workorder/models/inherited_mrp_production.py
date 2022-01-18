@@ -8,6 +8,7 @@ from odoo.addons import decimal_precision as dp
 import json
 
 import logging
+
 _logger = logging.getLogger(__name__)
 
 
@@ -28,6 +29,16 @@ class MrpProduction(models.Model):
                     continue
         return res
 
+    @api.multi
+    def _generate_workorders(self, exploded_boms):
+        workorders = super(MrpProduction, self)._generate_workorders(exploded_boms)
+        for workorder in workorders:
+            if workorder.operation_id.user_product_id and workorder.move_raw_ids.filtered(lambda r: r.product_id == workorder.operation_id.user_product_id):
+                workorder.user_price_unit = workorder.operation_id.user_product_id.standard_price
+            if workorder.operation_id.material_product_id and workorder.move_raw_ids.filtered(lambda r: r.product_id == workorder.operation_id.material_product_id):
+                workorder.material_price_unit = workorder.operation_id.material_product_id.standard_price
+        return workorders
+
 
 class MrpProductionLine(models.Model):
     """ Manufacturing Orders """
@@ -40,8 +51,10 @@ class MrpProductionLine(models.Model):
     # columns
     workorder_id = fields.Many2one('mrp.workorder', 'Work Orders')
     # values
-    product_qty = fields.Float('Quantity Of Product', digits=dp.get_precision('Product Unit of Measure'), track_visibility='onchange')
-    bom_product_qty = fields.Float('BOM Quantity Of Product', digits=dp.get_precision('Product Unit of Measure'), track_visibility='onchange')
+    product_qty = fields.Float('Quantity Of Product', digits=dp.get_precision('Product Unit of Measure'),
+                               track_visibility='onchange')
+    bom_product_qty = fields.Float('BOM Quantity Of Product', digits=dp.get_precision('Product Unit of Measure'),
+                                   track_visibility='onchange')
     lot_id = fields.Many2one('stock.production.lot', 'Lot/Serial Number')
     product_wo = fields.Integer('Checked by workorder', track_visibility='onchange')
     # move_ids = fields.Many2many('stock.move', string='Stock moves')
@@ -65,7 +78,7 @@ class StockProductionLotSave(models.Model):
     _description = "Place holder for current lots"
 
     lot_id = fields.Many2one('stock.production.lot', 'Lot/Serial Number',
-         index=True, ondelete='cascade', required=True)
+                             index=True, ondelete='cascade', required=True)
     production_id = fields.Many2one(
         'mrp.production', 'Manufacturing Order',
         index=True, ondelete='cascade', required=True)
@@ -77,7 +90,7 @@ class StockProductionLotSave(models.Model):
         domain=[('type', 'in', ['product', 'consu'])], index=True, required=True)
     qty_done = fields.Float('Quantity done')
 
-    #def unlink(self):
+    # def unlink(self):
     #    _logger.info("DELETE %s" % self, test)
     #    return super(StockProductionLotSave, self).unlink()
 

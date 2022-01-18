@@ -35,6 +35,16 @@ class MrpWorkorder(models.Model):
                                       domain=["|", ('lot_id', '!=', False), ('lot_name', '!=', False)],
                                       help="Inventory moves for which you must scan a lot number at this work order")
     access_token = fields.Char('Security Token', copy=False, default=_get_default_access_token)
+    user_price_unit = fields.Float('Human Unit Price',
+                                   help="Technical field used to record the human product cost (when costing "
+                                        "method used is 'standard price' or 'real'). Value given in company "
+                                        "currency and in product uom.",
+                                   copy=False)
+    material_price_unit = fields.Float('Material Unit Price',
+                                       help="Technical field used to record the material product cost (when costing "
+                                            "method used is 'standard price' or 'real'). Value given in company "
+                                            "currency and in product uom.",
+                                       copy=False)
 
     @api.multi
     def _compute_final_component(self):
@@ -249,7 +259,7 @@ class MrpWorkorder(models.Model):
                     time_cycle = move.workorder_id.operation_id.get_time_cycle(quantity=self.qty_producing,
                                                                                product=self.product_id)
                     duration_expected = move.bom_line_id.product_qty * ((
-                                                                                cycle_number * time_cycle * 100.0 / move.workorder_id.operation_id.workcenter_id.time_efficiency) * 60)
+                                                                            cycle_number * time_cycle * 100.0 / move.workorder_id.operation_id.workcenter_id.time_efficiency) * 60)
                     _logger.info("TIME duration_expected=%s, time_cycle=%s, cycle_number=%s, move=%s" % (
                         duration_expected, time_cycle, cycle_number, move._get_move_lines()))
                     move._generate_consumed_move_line(duration_expected, self.final_lot_id)

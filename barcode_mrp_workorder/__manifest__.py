@@ -15,6 +15,7 @@
         'product_gs_standard',
         'stock_packing_center',
         'website',
+        'hr',
         ],
     'data': [
         'security/ir.model.access.csv',

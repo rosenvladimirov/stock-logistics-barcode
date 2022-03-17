@@ -7,7 +7,7 @@
         This module adds support for barcodes scanning to the warehouse management system.
     """,
     'category': 'Warehouse',
-    'version': '11.0.0.2.0',
+    'version': '11.0.1.0.0',
     'depends': ['barcodes', 'stock'],
     'data': [
         'data/ir_config_parameter.xml',

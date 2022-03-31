@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
+import re
 
 from odoo import api, fields, models, _
 from odoo.addons.mrp_repair.models.mrp_repair import Repair as repair
 import logging
+
+from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
 
@@ -22,6 +25,36 @@ class Repair(models.Model):
     work_component = fields.Boolean('Component', help='Please checked it if work with component')
     picking_type_id = fields.Many2one('stock.picking.type', 'Operation Type', required=True, readonly=True,
                                       states={'draft': [('readonly', False)]}, default=_default_picking_type_id)
+    comment_tmpl1_id = fields.Many2one('base.comment.template', 'Internal Comment Template')
+    comment_tmpl2_id = fields.Many2one('base.comment.template', 'Quotation Comment Template')
+    product_id = fields.Many2one(copy=True)
+    product_uom = fields.Many2one(copy=True)
+    location_id = fields.Many2one(copy=True)
+    location_dest_id = fields.Many2one(copy=True)
+    lot_id = fields.Many2one(copy=False)
+
+
+    @api.onchange('comment_tmpl1_id')
+    def _set_note1(self):
+        comment = self.comment_tmpl1_id
+        _logger.info("ONCHANGE %s" % comment)
+        if comment and comment.use:
+            tag = re.compile(r'<[^>]+>')
+            self.internal_notes = "%s %s" % (self.internal_notes, tag.sub('', comment.get_value()) + "\n")
+
+    @api.onchange('comment_tmpl2_id')
+    def _set_note2(self):
+        comment = self.comment_tmpl2_id
+        if comment:
+            tag = re.compile(r'<[^>]+>')
+            self.quotation_notes = tag.sub('', comment.get_value())
+
+    # @api.onchange('lot_id')
+    # def onchange_lot_id(self):
+    #     _logger.info("LOT 1 %s" % self.state)
+    #     if self.state and self.action_validate():
+    #         _logger.info("LOT 2 %s" % self.state)
+    #         self.action_repair_start()
 
     @api.onchange('product_id')
     def onchange_product_id(self):
@@ -75,6 +108,7 @@ class Repair(models.Model):
 
     def _check_component(self, product, qty=1.0, lot=False, code=False, use_date=False):
         corresponding_ml_lot = False
+        corresponding_ml = False
         raw_corresponding_ml = self.operations.filtered(lambda ml: ml.product_id.id == product.id)
         if lot:
             lot_obj = self.env['stock.production.lot']
@@ -84,21 +118,21 @@ class Repair(models.Model):
                     lot_id = lot_obj.search(
                         [('product_id', '=', product.id), '|', ('name', '=', lot), ('ref', '=', code)])
                 else:
-                    lot_id = lot_id[0].lot_id
+                    lot_id = lot_id[0]
             else:
                 lot_id = raw_corresponding_ml.filtered(lambda r: r.lot_id.name == lot).mapped('lot_id')
                 if not lot_id:
                     lot_id = lot_obj.search([('product_id', '=', product.id), ('name', '=', lot)])
                 else:
-                    lot_id = lot_id[0].lot_id
+                    lot_id = lot_id[0]
             if not lot_id:
                 lot_id = lot_obj.create({'name': lot, 'ref': code, 'product_id': product.id, 'use_date': use_date})
                 raw_corresponding_ml.write({'lot_id': lot_id.id})
             corresponding_ml_lot = self.operations.filtered(
-                lambda ml: ml.product_id.id == product.id and ml.lots_visible and ml.lot_id == lot_id)
+                lambda ml: ml.product_id.id == product.id and ml.lot_id == lot_id)
         else:
             corresponding_ml = self.operations.filtered(
-                lambda ml: ml.product_id.id == product.id and not ml.lots_visible)
+                lambda ml: ml.product_id.id == product.id)
             lot_id = False
 
         if corresponding_ml_lot and len(corresponding_ml_lot) == 1:
@@ -111,7 +145,7 @@ class Repair(models.Model):
 
         if corresponding_ml:
             if raw_corresponding_ml and not raw_corresponding_ml.product_id.tracking == 'serial':
-                qty = raw_corresponding_ml.product_uom_qty / self.qty_production
+                qty = raw_corresponding_ml.product_uom_qty
             if lot_id and qty:
                 corresponding_ml.qty_done = qty
             elif lot_id and not qty:
@@ -131,23 +165,42 @@ class Repair(models.Model):
                 # if available_quants:
                 #    self.location_id = available_quants.location_id.id
             new_line = self.operations.new({
-                'type': 'replace',
+                'type': 'add',
                 'product_id': product.id,
-                'product_uom_id': product.uom_id.id,
+                'product_uom': product.uom_id.id,
                 'location_id': available_quants and available_quants.location_id.id or location_id.id,
                 'location_dest_id': self.location_dest_id.id,
                 'product_uom_qty': lot_id and qty or 0.0,
                 'lot_id': lot_id and lot_id.id,
             })
+            new_line.onchange_product_id()
             self.operations += new_line
-            corresponding_ml = new_line
-        if corresponding_ml:
-            corresponding_ml.onchange_product_id()
+            _logger.info("NEW LINE %s" % new_line)
+        #     corresponding_ml = new_line
+        # if corresponding_ml:
+        #     corresponding_ml.onchange_product_id()
         return True
+
+    def copy(self, default=None):
+        self.action_repair_end()
+        if self.state not in ['done', '2binvoiced', 'cancel', 'draft']:
+            raise UserError(_('First end repair order'))
+        return super(Repair, self).copy(default=default)
+
+    # @api.multi
+    # def confirm_copy(self):
+    #     self.ensure_one()
+    #     self.action_repair_end()
+    #     if self.state in ['done', '2binvoiced']:
+    #         self = self.copy(default={'state': 'draft', 'invoice_method': 'none'})
+    #         # record.action_validate()
+    #         # record.action_repair_start()
+    #     return {'type': 'ir.actions.client','tag': 'reload'}
 
     def on_barcode_scanned(self, barcode):
         message = _('The barcode "%(barcode)s" doesn\'t correspond to a proper product, package or location.')
         picking_type_id = self.picking_type_id
+        _logger.info("BARCODE %s" % barcode)
         if not picking_type_id.barcode_nomenclature_id:
             product = self.env['product.product'].search(
                 ['|', ('barcode', '=', barcode), ('default_code', '=', barcode)], limit=1)
@@ -161,6 +214,19 @@ class Repair(models.Model):
                     return
         else:
             parsed_result = picking_type_id.barcode_nomenclature_id.parse_barcode(barcode)
+            _logger.info("PARCE RESULT %s" % parsed_result)
+
+            if parsed_result['type'] in ['document']:
+                code = parsed_result['code']
+                template = self.env['base.comment.template'].search([('code', '=ilike', code[3:])])
+                _logger.info("TEMPLATE %s == %s(%s)" % (template, self.comment_tmpl1_id, code))
+                if template and self.comment_tmpl1_id == template:
+                    self._set_note1()
+                    return
+                elif template and self.comment_tmpl1_id != template:
+                    self.comment_tmpl1_id = template
+                    return
+
             if parsed_result['type'] in ['product']:
                 product_barcode = parsed_result['base_code']
                 qty = 1.0
@@ -188,12 +254,13 @@ class Repair(models.Model):
                 use_date = False
                 lot = parsed_result['lot']
                 code = parsed_result['code']
-                product_ids = [x.product_id.id for x in self.operations]
+                # product_ids = [x.product_id.id for x in self.operations]
 
                 _logger.info("PARCE %s(%s)" % (parsed_result, self.work_component))
                 if self.work_component or not parsed_result['sub_type'] or parsed_result['sub_type'] == 'component':
-                    lot_id = self.env['stock.production.lot'].search([('name', '=', lot), (
-                        'product_id', 'in', product_ids)])  # Logic by product but search by lot in existing lots
+                    # , (
+                    #     'product_id', 'in', product_ids)
+                    lot_id = self.env['stock.production.lot'].search([('name', '=', lot)])  # Logic by product but search by lot in existing lots
                     if len([x.id for x in lot_id]) >= 1:
                         for line in lot_id:
                             product = self.env['product.product'].browse([line.product_id.id])
@@ -217,6 +284,7 @@ class Repair(models.Model):
                     if lot_id:
                         product = lot_id[-1].product_id
                     if self.with_context(dict(self._context, no_erase_lot=True))._check_product(product, qty, lot, code, use_date):
+                        # self.onchange_lot_id()
                         return
                     else:
                         message = _('The barcode "%(barcode)s" maybe is serial and is added to a product')

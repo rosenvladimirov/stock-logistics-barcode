@@ -12,6 +12,9 @@
     'depends': [
         'mrp_repair',
         'barcodes',
+        'base_comment_template',
+        'base_repair_config',
+        'web_ir_actions_act_view_reload',
     ],
     'data': [
         'views/mrp_repair_views.xml',

@@ -6,6 +6,9 @@
             <field name="model">mrp.repair</field>
             <field name="inherit_id" ref="mrp_repair.view_repair_order_form"/>
             <field name="arch" type="xml">
+<!--                <xpath expr="//header" position="inside">-->
+<!--                   <button name="confirm_copy" states="under_repair" type="object" string="Confirm &amp; New" class="oe_highlight"/>-->
+<!--                </xpath>-->
                 <form position="inside">
                     <field name="_barcode_scanned" widget="barcode_handler"/>
                 </form>
@@ -17,7 +20,39 @@
                                 options='{"terminology": {"string_true": "Component", "hover_true": "COMPONENT", "string_false": "Production", "hover_false": "PRODUCTION"}}'/>
                     </button>
                 </xpath>
+                <xpath expr="//field[@name='company_id']" position="after">
+                    <field name="picking_type_id" invisible="1"/>
+                </xpath>
+                <xpath expr="//field[@name='internal_notes']" position="before">
+                    <grup>
+                        <field name="comment_tmpl1_id" domain="[('position', '=', 'document')]"/>
+                    </grup>
+                </xpath>
+                <xpath expr="//field[@name='quotation_notes']" position="before">
+                    <group>
+                        <field name="comment_tmpl2_id" domain="[('position', '=', 'document')]"/>
+                    </group>
+                </xpath>
             </field>
         </record>
+        <record model="ir.actions.act_window" id="action_repair_base_comment_template">
+            <field name="name">Internal/Quotation notes</field>
+            <field name="type">ir.actions.act_window</field>
+            <field name="res_model">base.comment.template</field>
+            <field name="view_type">form</field>
+            <field name="view_mode">tree,form</field>
+            <field name="context">{'search_default_document': 1}</field>
+            <field name="view_id" ref="base_comment_template.view_base_comment_template_tree"/>
+            <field name="search_view_id" ref="base_comment_template.view_base_comment_template_search"/>
+        </record>
+<!--        <menuitem id="menu_repair_order_config"-->
+<!--            groups="stock.group_stock_user"-->
+<!--            name="Configuration"-->
+<!--            parent="mrp_repair.menu_repair_order"/>-->
+
+        <menuitem name="Internal/Quotation notes"
+            id="menu_repair_base_comment_templates"
+            action="action_repair_base_comment_template"
+            parent="base_repair_config.menu_repair_configuration"/>
     </data>
 </odoo>

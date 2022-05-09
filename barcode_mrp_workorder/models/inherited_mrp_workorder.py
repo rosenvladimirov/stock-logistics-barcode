@@ -96,6 +96,18 @@ class MrpWorkorder(models.Model):
         return self.env['ir.actions.report']._get_report_from_name('final_product_label').with_context(
             ctx).report_action(docids)
 
+    # @api.onchange('final_lot_id')
+    # @api.depends('active_move_line_ids')
+    # def onchange_final_lot_id(self):
+    #     for record in self:
+    #         if self._context.get('emulate_scanner'):
+    #             record.on_barcode_scanned(record.final_lot_id)
+
+    @api.onchange('_barcode_scanned')
+    @api.depends('active_move_line_ids')
+    def _on_barcode_scanned(self):
+        return super(MrpWorkorder, self)._on_barcode_scanned()
+
     def _auto_add_lots(self, product, lot=False, use_date=False):
         lot_obj = self.env['stock.production.lot']
         if lot:
@@ -548,6 +560,7 @@ class MrpWorkorder(models.Model):
             corresponding_ml.onchange_serial_number()
         return True
 
+    @api.depends('active_move_line_ids')
     def on_barcode_scanned(self, barcode):
         message = _('The barcode "%(barcode)s" doesn\'t correspond to a proper product, package or location.')
         picking_type_id = self.production_id.picking_type_id

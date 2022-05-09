@@ -17,6 +17,9 @@
                 <attribute name="options">{'barcode_events': True}</attribute>
                 <attribute name="widget">field_float_scannable</attribute>
             </xpath>
+            <xpath expr="//field[@name='active_move_line_ids']/tree/field[@name='lot_id']" position="attributes">
+                <attribute name="options">{'barcode_events': True}</attribute>
+            </xpath>
             <xpath expr="//div[@name='button_box']" position="inside">
                 <button name="add_lot_to_product" type="object" string="Create Lot/SN"
                         class="oe_stat_button"

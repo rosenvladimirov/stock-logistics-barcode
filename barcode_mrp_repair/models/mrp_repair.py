@@ -89,6 +89,11 @@ class Repair(models.Model):
                 lot_id = lot_obj.search([('product_id', '=', product.id), '|', ('name', '=', lot), ('ref', '=', code)])
             else:
                 lot_id = lot_obj.search([('product_id', '=', product.id), ('name', '=', lot)])
+            if not lot_id:
+                if self.product_id:
+                    lot_id = lot_obj.create({'product_id': self.product_id.id, 'name': lot})
+                else:
+                    raise UserError(_('You have not selected a product.'))
             available_quants = self.env['stock.quant'].search([
                 ('lot_id', '=', lot_id.id),
                 ('location_id', 'child_of', location_id.id),

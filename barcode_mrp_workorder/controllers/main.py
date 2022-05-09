@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import time
 
 from odoo import http, tools, _
 from odoo.http import request
@@ -13,8 +14,10 @@ _logger = logging.getLogger(__name__)
 class WebsiteWorkorder(http.Controller):
 
     def _workorder_update_json(self, workorder_id, product_id, lot_ref, lot_id, employee_id=None):
+        seconds = time.time()
         _logger.info(
-            "WO %s:%s:%s:%s:%s" % (workorder_id.ids, product_id, workorder_id.product_id.default_code, lot_ref, lot_id))
+            "WO %s:%s:%s:%s:%s:%s" % (workorder_id.ids, product_id, workorder_id.product_id.default_code, lot_ref,
+                                      lot_id, employee_id and employee_id.name))
         if workorder_id and workorder_id.product_id.default_code == product_id:
             if len(workorder_id.ids) > 1:
                 retrn = {'error': {
@@ -71,6 +74,8 @@ class WebsiteWorkorder(http.Controller):
                 'title': _('Wrong workorder information'),
                 'message': 'The product ref or work order is wrong!!!'
             }}
+        seconds = time.time() - seconds
+        _logger.info("TIME USED %s" % seconds)
         return retrn
 
     @http.route(['/workorder/login'], type='http', auth="public", website=True, csrf=False)

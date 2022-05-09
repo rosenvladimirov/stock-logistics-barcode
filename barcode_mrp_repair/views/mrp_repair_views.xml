@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <data>
+        <record id="view_repair_order_form_filter" model="ir.ui.view">
+            <field name="name">mrp.repair.select</field>
+            <field name="model">mrp.repair</field>
+            <field name="inherit_id" ref="mrp_repair.view_repair_order_form_filter"/>
+            <field name="arch" type="xml">
+                <field name="name" position="after">
+                  <field name="lot_id" filter_domain="[('lot_id', 'ilike', self[1:])]"/>
+                </field>
+            </field>
+        </record>
         <record id="view_repair_order_form" model="ir.ui.view">
             <field name="name">mrp.repair.form</field>
             <field name="model">mrp.repair</field>

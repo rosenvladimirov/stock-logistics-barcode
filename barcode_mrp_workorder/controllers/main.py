@@ -32,25 +32,30 @@ class WebsiteWorkorder(http.Controller):
                 swith_mode = workorder_id.work_component
                 workorder_id.work_component = False
                 workorder_id.work_production = False
-                final_lot_id = workorder_id.env['stock.production.lot'].search(
-                    [('product_id', '=', workorder_id.product_id.id), ('name', '=', lot_ref)])
-                if final_lot_id:
-                    return {'error': {
-                        'title': _('Wrong lot'),
-                        'message': 'The lot exist in database!!!'
-                    }}
-                final_lot_id = workorder_id.env['stock.production.lot'].create({
-                    'name': lot_ref,
-                    'product_id': workorder_id.product_id.id,
-                })
-                if final_lot_id:
-                    workorder_id.final_lot_id = final_lot_id
-                    retrn = False
+                if not lot_ref:
+                    lot_ref = lot_id
+                if workorder_id.product_id.tracking in ['lot', 'serial']:
+                    final_lot_id = workorder_id.env['stock.production.lot'].search(
+                        [('product_id', '=', workorder_id.product_id.id), ('name', '=', lot_ref)])
+                    if final_lot_id:
+                        return {'error': {
+                            'title': _('Wrong lot'),
+                            'message': 'The lot exist in database!!!'
+                        }}
+                    final_lot_id = workorder_id.env['stock.production.lot'].create({
+                        'name': lot_ref,
+                        'product_id': workorder_id.product_id.id,
+                    })
+                    if final_lot_id:
+                        workorder_id.final_lot_id = final_lot_id
+                        retrn = False
+                    else:
+                        retrn = {'warning': {
+                            'title': _('Wrong lot'),
+                            'message': 'The lot is not created!!!'
+                        }}
                 else:
-                    retrn = {'warning': {
-                        'title': _('Wrong lot'),
-                        'message': 'The lot is not created!!!'
-                    }}
+                    retrn = False
                 # retrn = workorder_id.on_barcode_scanned(lot_ref)
                 if not retrn or (retrn and not retrn.get('warning')):
                     workorder_id.work_component = True
@@ -127,7 +132,7 @@ class WebsiteWorkorder(http.Controller):
     @http.route(['/workorder'], type='http', auth="public", website=True)
     def workorder(self, product_id, lot_id=None, lot_ref=None, access_token=None, **post):
         _logger.info('POST %s:%s:%s:%s' % (product_id, lot_id, lot_ref, access_token))
-        if lot_id is None or lot_ref is None:
+        if lot_id is None:
             return {'error': {
                 'title': _('Wrong lots'),
                 'message': 'The lot or lot ref is wrong!!!'
@@ -161,7 +166,7 @@ class WebsiteWorkorder(http.Controller):
                               employee_id=None, **post):
         _logger.info('HTTP %s:%s:%s:%s in %s:%s' % (
         product_id, lot_id, lot_ref, search, request.env['mrp.workorder'], access_token))
-        if lot_id is None or lot_ref is None:
+        if lot_id is None:
             return json.dumps({'error': {
                 'title': _('Wrong lots'),
                 'message': 'The lot or lot ref is wrong!!!'
@@ -178,7 +183,7 @@ class WebsiteWorkorder(http.Controller):
     @http.route(['/workorder/update_json'], type='json', auth="public", methods=['POST'], website=True, csrf=False)
     def workorder_update_json(self, product_id=None, lot_id=None, lot_ref=None, search='', **post):
         _logger.info('JSON %s:%s:%s:%s::%s' % (product_id, lot_id, lot_ref, search, post))
-        if lot_id is None or lot_ref is None:
+        if lot_id is None:
             return {'error': {
                 'title': _('Wrong lots'),
                 'message': 'The lot or lot ref is wrong!!!'

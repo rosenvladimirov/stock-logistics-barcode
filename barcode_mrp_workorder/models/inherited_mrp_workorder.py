@@ -748,6 +748,12 @@ class MrpWorkorder(models.Model):
         MoveLine = self.env['stock.move.line']
         lot_in_bins = {}
 
+        oring_move_raw_ids = self.move_raw_ids
+        if len(oring_move_raw_ids.ids) != len(oring_move_raw_ids.filtered(lambda r: r.workorder_id == self and r.operation_id == self.operation_id).ids):
+            oring_move_raw_ids = oring_move_raw_ids.\
+                filtered(lambda r: r.workorder_id == self and r.operation_id == self.operation_id)
+            self.move_raw_ids = oring_move_raw_ids
+
         if self.use_bins:
             # First group all used product in one list
             product_in_bins = self.env['product.product']
@@ -767,14 +773,16 @@ class MrpWorkorder(models.Model):
                     for qty_lot in lot_in_bins[product].values():
                         qty += qty_lot
                 if qty > 0:
-                    move_raw_ids = self.move_raw_ids.filtered(lambda r: r.product_id == product)
+                    move_raw_ids = oring_move_raw_ids.filtered(lambda r: r.product_id == product)
                     move_raw_ids.write({'unit_factor': qty, 'product_uom_qty': qty * self.qty_production})
 
-        tracked_moves = self.move_raw_ids.filtered(
+        tracked_moves = oring_move_raw_ids.filtered(
             lambda move: move.state not in ('done',
                                             'cancel') and move.product_id.tracking != 'none' and move.product_id != self.production_id.product_id and (
                              move.bom_line_id or move.extra_bom_line))
+
         for move in tracked_moves:
+            # _logger.info("LINE %s" % move)
             qty = move.unit_factor * self.qty_producing
             if move.product_id.tracking == 'serial':
                 while float_compare(qty, 0.0, precision_rounding=move.product_uom.rounding) > 0:

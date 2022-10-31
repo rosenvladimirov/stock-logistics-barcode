@@ -23,7 +23,7 @@ class MrpWorkorder(models.Model):
         return str(uuid.uuid4())
 
     work_component = fields.Boolean('Component', help='Please checked it if work with component')
-    work_production = fields.Boolean('Combination', help='Please checked it if work with pair product/component')
+    # work_production = fields.Boolean('Combination', help='Please checked it if work with pair product/component')
     use_bins = fields.Boolean('Bins', help='Please checked it if work with bins')
     final_component = fields.Integer('Component Lot/SN Count', track_visibility="onchange",
                                      compute="_compute_final_component")
@@ -56,10 +56,10 @@ class MrpWorkorder(models.Model):
         for record in self:
             record.work_component = not record.work_component
 
-    @api.multi
-    def toggle_work_production(self):
-        for record in self:
-            record.work_production = not record.work_production
+    # @api.multi
+    # def toggle_work_production(self):
+    #     for record in self:
+    #         record.work_production = not record.work_production
 
     @api.multi
     def toggle_use_bins(self):
@@ -70,7 +70,8 @@ class MrpWorkorder(models.Model):
 
     def _assign_default_final_lot_id(self):
         super(MrpWorkorder, self)._assign_default_final_lot_id()
-        if self.production_id.product_id.tracking == 'serial' and self.work_component and not self.work_production:
+        # if self.production_id.product_id.tracking == 'serial' and self.work_component and not self.work_production:
+        if self.production_id.product_id.tracking == 'serial' and self.work_component:
             self.work_component = False
 
     def action_lots_glabel_print(self):
@@ -108,6 +109,11 @@ class MrpWorkorder(models.Model):
     def _on_barcode_scanned(self):
         return super(MrpWorkorder, self)._on_barcode_scanned()
 
+    def action_open_wizard_view_stock_picking_add_product(self):
+        action = self.env.ref('barcode_mrp_workorder.act_open_wizard_view_stock_picking_add_product').read()[0]
+        action['context'] = {'default_workorder_id': self.id}
+        return action
+
     def _auto_add_lots(self, product, lot=False, use_date=False):
         lot_obj = self.env['stock.production.lot']
         if lot:
@@ -130,10 +136,12 @@ class MrpWorkorder(models.Model):
                                'barcode': self.final_lot_id.name}
             }}
         else:
-            lot = self._auto_add_lots(self.product_id)
-            if lot:
-                self.final_lot_id = lot.id
-        return True
+            action = self.env.ref('barcode_mrp_workorder.act_open_wizard_view_workorder_add_product_lot').read()[0]
+            action['context'] = {'default_workorder_id': self.id, 'default_product_id': self.product_id.id}
+            # lot = self._auto_add_lots(self.product_id)
+            # if lot:
+            #     self.final_lot_id = lot.id
+            return action
 
     @api.multi
     def end_all(self):
@@ -157,6 +165,7 @@ class MrpWorkorder(models.Model):
             move_line_id = False
             bom_line = False
             bom_product_qty = 0.0
+            quantity_done = 0.0
             if move_ids._name == 'stock.move':
                 bom_product_qty = move_line.quantity_done
                 quantity_done = move_line.quantity_done
@@ -419,7 +428,8 @@ class MrpWorkorder(models.Model):
 
         if float_compare(self.qty_produced, self.production_id.product_qty, precision_rounding=rounding) >= 0:
             self.button_finish()
-        # _logger.info("FINAL %s:%s %s" % (self.qty_producing, self.qty_produced, self.product_id and self.product_id.name or "no product"))
+        _logger.info("FINAL %s:%s %s" % (
+        self.qty_producing, self.qty_produced, self.product_id and self.product_id.name or "no product"))
         return True
 
     def _check_product_create(self, lot, product, use_date):
@@ -470,14 +480,23 @@ class MrpWorkorder(models.Model):
         # _logger.info("LOT SAVED %s" % self.final_lot_id)
         return True
 
-    def _check_component(self, product, qty=1.0, lot=False, code=False, use_date=False):
+    def _check_component(self, product, qty=1.0, lot=False, code=False, use_date=False, work_production=False):
         corresponding_ml_lot = False
-        raw_corresponding_ml = self.move_raw_ids.filtered(lambda ml: ml.product_id.id == product.id)
+        if work_production:
+            raw_corresponding_ml = self.move_raw_ids. \
+                filtered(lambda ml: ml.product_id.id == product.id and ml.work_production)
+        else:
+            raw_corresponding_ml = self.move_raw_ids.filtered(lambda ml: ml.product_id.id == product.id)
         raw_corresponding_mll = raw_corresponding_ml.mapped("move_line_ids")
         if lot:
             lot_obj = self.env['stock.production.lot']
-            corresponding_ml = self.active_move_line_ids.filtered(
-                lambda ml: ml.product_id.id == product.id and ml.lots_visible and not ml.lot_id)
+            if work_production:
+                corresponding_ml = self.active_move_line_ids. \
+                    filtered(lambda ml: ml.move_id.work_production
+                                        and ml.product_id.id == product.id and ml.lots_visible and not ml.lot_id)
+            else:
+                corresponding_ml = self.active_move_line_ids. \
+                    filtered(lambda ml: ml.product_id.id == product.id and ml.lots_visible and not ml.lot_id)
             if code:
                 lot_id = raw_corresponding_mll.filtered(
                     lambda r: r.lot_id and r.lot_id.name == lot or r.lot_id.ref == code)
@@ -588,13 +607,13 @@ class MrpWorkorder(models.Model):
                     ['|', ('barcode', '=', product_barcode), ('default_code', '=', product_barcode)], limit=1)
                 if not product:
                     product = self.product_id
-                if self.work_component or ['sub_type'] == 'component':
+                if self.work_component or parsed_result['sub_type'] == 'component':
                     if self._check_component(product, qty, lot, use_date):
                         return
-                elif self.work_production or ['sub_type'] == 'pair':
-                    if self._check_product(product, qty, lot, use_date):
-                        if self._check_component(product, qty, lot, use_date):
-                            return
+                # elif self.work_production or parsed_result['sub_type'] == 'pair':
+                #     if self._check_product(product, qty, lot, use_date):
+                #         if self._check_component(product, qty, lot, use_date):
+                #             return
                 elif not self.work_component or parsed_result['sub_type'] == 'product':
                     if self._check_product(product, qty, lot, use_date):
                         # add functionality to search for paring in bom or components lines
@@ -617,57 +636,58 @@ class MrpWorkorder(models.Model):
                     lot = code
                 product_ids = [x.product_id.id for x in self.move_raw_ids]
                 # _logger.info("PARCE %s" % parsed_result)
-                if self.work_production or parsed_result['sub_type'] == 'pair':
-                    if self._check_product(product, qty, lot, code, use_date):
-                        rtrn = False
-                        available_quants = False
-                        products = []
-                        available = []
-                        # first pass check in reserved material
-                        tracked_moves = self.active_move_line_ids.filtered(lambda move: move.state not in ('done',
-                                                                                                           'cancel') and move.product_id.tracking != 'none' and move.product_id != self.production_id.product_id)
-                        lot_id = tracked_moves.filtered(lambda r: r.lot_id and r.lot_id.name == lot)
-                        if lot_id:
-                            available_quants = qty = lot_id[0].unit_factor * self.qty_producing
-                            use_date = lot_id[0].lot_id.use_date
-                            product = lot_id[0].product_id
-                            products.append(product)
-                            available.append(product.id)
-                        # second pass check in all materials
-                        if not lot_id:
-                            lot_id = self.env['stock.production.lot'].search(
-                                [('name', '=', lot), ('product_id', 'in', product_ids)],
-                                limit=1)  # Logic by product but search by lot in existing lots
-                            if len([x.id for x in lot_id]) == 1:
-                                product = self.env['product.product'].browse([lot_id.product_id.id])
-                                available_quants = self.env['stock.quant'].search([
-                                    ('lot_id', '=', lot_id.id),
-                                    ('location_id', 'child_of', location_id.id),
-                                    ('product_id', '=', product.id),
-                                    ('quantity', '>', 0),
-                                ])
-                            use_date = lot_id.use_date
-                            if available_quants:
-                                qty = sum(x.quantity for x in available_quants) or 1.0
-                            else:
-                                qty = 1.0
-                            product = lot_id.product_id
-                            products.append(product)
-                            available.append(product.id)
-                        if len(tracked_moves) > len(available):
-                            ml_all = self.active_move_line_ids.filtered(lambda
-                                                                            ml: ml.product_id != self.production_id.product_id and ml.lots_visible and not ml.lot_id and ml.product_id.id not in available)
-                            if ml_all:
-                                qty = False
-                                use_date = False
-                                code = False
-                                for ml in ml_all:
-                                    products.append(ml.product_id)
-                        for product in products:
-                            _logger.info("PRODUCT %s:%s" % (lot, product.display_name))
-                            self._check_component(product, qty, lot, code, use_date)
-                        return
-                elif self.work_component or not parsed_result['sub_type'] or parsed_result['sub_type'] == 'component':
+                # if self.work_production or parsed_result['sub_type'] == 'pair':
+                #     if self._check_product(product, qty, lot, code, use_date):
+                #         rtrn = False
+                #         available_quants = False
+                #         products = []
+                #         available = []
+                #         # first pass check in reserved material
+                #         tracked_moves = self.active_move_line_ids.filtered(lambda move: move.state not in ('done',
+                #                                                                                            'cancel') and move.product_id.tracking != 'none' and move.product_id != self.production_id.product_id)
+                #         lot_id = tracked_moves.filtered(lambda r: r.lot_id and r.lot_id.name == lot)
+                #         if lot_id:
+                #             available_quants = qty = lot_id[0].unit_factor * self.qty_producing
+                #             use_date = lot_id[0].lot_id.use_date
+                #             product = lot_id[0].product_id
+                #             products.append(product)
+                #             available.append(product.id)
+                #         # second pass check in all materials
+                #         if not lot_id:
+                #             lot_id = self.env['stock.production.lot'].search(
+                #                 [('name', '=', lot), ('product_id', 'in', product_ids)],
+                #                 limit=1)  # Logic by product but search by lot in existing lots
+                #             if len([x.id for x in lot_id]) == 1:
+                #                 product = self.env['product.product'].browse([lot_id.product_id.id])
+                #                 available_quants = self.env['stock.quant'].search([
+                #                     ('lot_id', '=', lot_id.id),
+                #                     ('location_id', 'child_of', location_id.id),
+                #                     ('product_id', '=', product.id),
+                #                     ('quantity', '>', 0),
+                #                 ])
+                #             use_date = lot_id.use_date
+                #             if available_quants:
+                #                 qty = sum(x.quantity for x in available_quants) or 1.0
+                #             else:
+                #                 qty = 1.0
+                #             product = lot_id.product_id
+                #             products.append(product)
+                #             available.append(product.id)
+                #         if len(tracked_moves) > len(available):
+                #             ml_all = self.active_move_line_ids.filtered(lambda
+                #                                                             ml: ml.product_id != self.production_id.product_id and ml.lots_visible and not ml.lot_id and ml.product_id.id not in available)
+                #             if ml_all:
+                #                 qty = False
+                #                 use_date = False
+                #                 code = False
+                #                 for ml in ml_all:
+                #                     products.append(ml.product_id)
+                #         for product in products:
+                #             _logger.info("PRODUCT %s:%s" % (lot, product.display_name))
+                #             self._check_component(product, qty, lot, code, use_date)
+                #         return
+                # elif self.work_component or not parsed_result['sub_type'] or parsed_result['sub_type'] == 'component':
+                if self.work_component or parsed_result['sub_type'] == 'component':
                     rtrn = False
                     lot_id = self.env['stock.production.lot'].search([('name', '=', lot), (
                         'product_id', 'in', product_ids)])  # Logic by product but search by lot in existing lots
@@ -703,19 +723,20 @@ class MrpWorkorder(models.Model):
                         return
                 elif not self.work_component or parsed_result['sub_type'] == 'product':
                     if self._check_product(product, qty, lot, code, use_date):
-                        if self.production_id.product_id.tracking == 'serial' and not self.work_component and not self.work_production:
+                        if self.production_id.product_id.tracking == 'serial':
+                            # and not self.work_component and not self.work_production:
                             # add functionality to search for paring in bom or components lines
                             if any([x for x in self.move_raw_ids if x.work_production]):
-                                if self._check_component(product, qty, lot, use_date):
+                                if self._check_component(product, qty, lot, use_date, work_production=True):
                                     return
-                            self.work_component = True
+                            # self.work_component = True
                         return
                     else:
                         message = _('The barcode "%(barcode)s" maybe is serial and is added to a product')
                 else:
-                    lot_id = self.env['stock.production.lot'].search(
-                        [('name', '=', lot), ('product_id', 'in', product_ids)],
-                        limit=1)  # Logic by product but search by lot in existing lots
+                    lot_id = self.env['stock.production.lot']. \
+                        search([('name', '=', lot), ('product_id', 'in', product_ids)],
+                               limit=1)  # Logic by product but search by lot in existing lots
                     if len([x.id for x in lot_id]) == 1:
                         product = self.env['product.product'].browse([lot_id.product_id.id])
                         available_quants = self.env['stock.quant'].search([
@@ -749,8 +770,9 @@ class MrpWorkorder(models.Model):
         lot_in_bins = {}
 
         oring_move_raw_ids = self.move_raw_ids
-        if len(oring_move_raw_ids.ids) != len(oring_move_raw_ids.filtered(lambda r: r.workorder_id == self and r.operation_id == self.operation_id).ids):
-            oring_move_raw_ids = oring_move_raw_ids.\
+        if len(oring_move_raw_ids.ids) != len(
+            oring_move_raw_ids.filtered(lambda r: r.workorder_id == self and r.operation_id == self.operation_id).ids):
+            oring_move_raw_ids = oring_move_raw_ids. \
                 filtered(lambda r: r.workorder_id == self and r.operation_id == self.operation_id)
             self.move_raw_ids = oring_move_raw_ids
 

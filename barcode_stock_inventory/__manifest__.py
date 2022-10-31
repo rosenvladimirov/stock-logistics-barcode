@@ -10,12 +10,12 @@
     'version': '11.0.0.1.0',
     'depends': [
         'barcodes',
-        'mrp',
         'product_gs_standard',
+        'stock',
         #'stock_packing_center'
         ],
     'data': [
-
+        'views/stock_inventory_views.xml'
     ],
     'demo': [
     ],

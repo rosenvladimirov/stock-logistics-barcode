@@ -17,19 +17,22 @@
                 <attribute name="options">{'barcode_events': True}</attribute>
                 <attribute name="widget">field_float_scannable</attribute>
             </xpath>
+            <!--
             <xpath expr="//field[@name='active_move_line_ids']/tree/field[@name='lot_id']" position="attributes">
                 <attribute name="options">{'barcode_events': True}</attribute>
             </xpath>
+            -->
             <xpath expr="//div[@name='button_box']" position="inside">
                 <button name="add_lot_to_product" type="object" string="Create Lot/SN"
                         class="oe_stat_button"
                         icon="fa fa-plus-square"
                         barcode_trigger="lot"
-                        attrs="{'invisible': ['|', '|', '|', ('is_produced', '=', True), ('working_state', '=', 'blocked'), ('state', '!=', 'progress'), ('is_user_working', '=', False)]}"/>
+                        attrs="{'invisible': [('product_tracking', '=', False), '|', '|', '|', ('is_produced', '=', True), ('working_state', '=', 'blocked'), ('state', '!=', 'progress'), ('is_user_working', '=', False)]}"/>
                 <button name="toggle_work_component" type="object"
                         class="oe_stat_button"
                         icon="fa fa-caret-square-o-down"
-                        style="color: #008784 !important;" attrs="{'invisible': [('work_production', '=', True)]}">
+                        style="color: #008784 !important;">
+<!--                        style="color: #008784 !important;" attrs="{'invisible': [('work_production', '=', True)]}">-->
                         <field name="work_component" widget="boolean_button"
                             options='{"terminology": {"string_true": "Component", "hover_true": "COMPONENT", "string_false": "Production", "hover_false": "PRODUCTION"}}'/>
                 </button>
@@ -80,6 +83,7 @@
                         class="oe_stat_button" style="color: #008784 !important;"
                         icon="fa fa-trash"
                         attrs="{'invisible': [('state', 'in', ('confirmed', 'cancel'))]}"/>
+                <!--
                 <button name="toggle_work_production" type="object"
                         class="oe_stat_button"
                         icon="fa fa-adjust"
@@ -87,6 +91,7 @@
                         <field name="work_production" widget="boolean_button"
                             options='{"terminology": {"string_true": "Pair", "hover_true": "PAIR", "string_false": "Unpair", "hover_false": "UNPAIR"}}'/>
                 </button>
+                -->
                 <button name="toggle_use_bins" type="object"
                         class="oe_stat_button"
                         icon="fa fa-suitcase"

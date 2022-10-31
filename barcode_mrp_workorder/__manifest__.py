@@ -23,9 +23,11 @@
         'views/mrp_production_views.xml',
         'views/mrp_workorder_views.xml',
         'views/stock_picking_views.xml',
-        'views/barcode_mrp_workorder.xml',
         'views/mrp_routing_views.xml',
         'views/stock_account_views.xml',
+        'wizards/workorder_add_component_lot.xml',
+        'wizards/workorder_add_product_lot.xml',
+        'views/barcode_mrp_workorder.xml',
     ],
     'demo': [
     ],

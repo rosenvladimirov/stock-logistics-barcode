@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="view_workorder_add_component_lot_form" model="ir.ui.view">
+            <field name="name">workorder_add.component.lot.form</field>
+            <field name="model">workorder_add.component.lot</field>
+            <field name="arch" type="xml">
+                <form>
+                    <group>
+                        <field name="workorder_id" invisible="1"/>
+                        <field name="lot_name" invisible="1"/>
+                        <field name="product_id"/>
+                        <field name="lot_id" domain="[('product_id', '=', product_id)]" groups="stock.group_production_lot" context="{'default_product_id': product_id}"/>
+                        <field name="product_uom_id"/>
+                        <field name="quantity"/>
+                    </group>
+                    <field name="product_ids" invisible="1"/>
+                    <footer>
+                        <button name="add_new_lot" type="object" string="Validate Lot" class="btn-primary" barcode_trigger="validate"/>
+                        <button string="Cancel" class="btn-default" special="cancel" />
+                    </footer>
+                </form>
+            </field>
+        </record>
+      <record id="act_open_wizard_view_stock_picking_add_product" model="ir.actions.act_window">
+              <field name="name">Add extra lots in workorder</field>
+              <field name="res_model">workorder_add.component.lot</field>
+              <field name="view_type">form</field>
+              <field name="view_mode">form</field>
+              <field name="view_id" ref="view_workorder_add_component_lot_form"/>
+              <field name="target">new</field>
+      </record>
+    </data>
+</odoo>

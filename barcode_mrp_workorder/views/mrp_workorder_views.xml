@@ -31,6 +31,7 @@
                 <button name="toggle_work_component" type="object"
                         class="oe_stat_button"
                         icon="fa fa-caret-square-o-down"
+                        barcode_trigger="component"
                         style="color: #008784 !important;">
 <!--                        style="color: #008784 !important;" attrs="{'invisible': [('work_production', '=', True)]}">-->
                         <field name="work_component" widget="boolean_button"
@@ -39,6 +40,7 @@
                 <button name="button_finish" type="object" string="Finish Order"
                         class="oe_stat_button"
                         icon="fa fa-th-list"
+                        barcode_trigger="finish"
                         attrs="{'invisible': ['|', ('state', '!=', 'progress'), ('is_produced', '=', False)]}"/>
                 <button name="button_start" type="object" string="Start Working"
                         class="oe_stat_button" style="background-color: #00a04a !important; color: #fff !important;"
@@ -68,6 +70,7 @@
                 <button name="button_unblock" type="object" string="Unblock"
                         class="oe_stat_button" style="background-color: #ffc107 !important; color: #fff !important;"
                         icon="fa fa-unlock"
+                        barcode_trigger="unblock"
                         attrs="{'invisible': [('working_state', '!=', 'blocked')]}"/>
                 <button name="button_start" type="object" string="Continue Production"
                         class="oe_stat_button btn-warning" style="color: #008784 !important;"
@@ -82,6 +85,7 @@
                 <button name="button_scrap" type="object" string="Scrap"
                         class="oe_stat_button" style="color: #008784 !important;"
                         icon="fa fa-trash"
+                        barcode_trigger="scrap"
                         attrs="{'invisible': [('state', 'in', ('confirmed', 'cancel'))]}"/>
                 <!--
                 <button name="toggle_work_production" type="object"
@@ -95,9 +99,17 @@
                 <button name="toggle_use_bins" type="object"
                         class="oe_stat_button"
                         icon="fa fa-suitcase"
+                        barcode_trigger="bins"
                         style="color: #008784 !important;">
                         <field name="use_bins" widget="boolean_button"
                             options='{"terminology": {"string_true": "Use Bins", "hover_true": "BINS USED", "string_false": "No Bins", "hover_false": "NO BINS"}}'/>
+                </button>
+                <button name="toggle_additional_consume" type="object"
+                    class="oe_stat_button"
+                    icon="fa fa-asterisk"
+                    style="color: #008784 !important;">
+                    <field name="consume_additional" widget="boolean_button"
+                        options='{"terminology": {"string_true": "Additional", "hover_true": "ADDITIONAL CONSUME", "string_false": "No additional consume", "hover_false": "NO ADDITIONAL CONSUME"}}'/>
                 </button>
                 <button name="button_empty_bins" type="object" string="Empty The bins"
                         class="oe_stat_button" style="background-color: #dc3545 !important; color: #fff !important;"
@@ -130,7 +142,7 @@
                 <field name="final_component" readonly="1"/>
             </xpath>
             <xpath expr="//notebook/page[2]" position="after">
-                <page string="Holded lots">
+                <page string="Holded lots" attrs="{'invisible': [('use_bins', '=', False)]}">
                     <field name="split_lot_ids" readonly="1" domain="[('workorder_id', '=', active_id)]">
                         <tree>
                             <field name="product_id"/>
@@ -143,6 +155,9 @@
             <xpath expr="//group/group[1]" position="inside">
                 <field name="user_price_unit"/>
                 <field name="material_price_unit"/>
+            </xpath>
+            <xpath expr="//group/field[@name='product_id']" position="before">
+                <field name="employee_id"/>
             </xpath>
         </field>
     </record>

@@ -3,6 +3,9 @@
 import math
 import uuid
 
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+
 from odoo import models, fields, api, _
 from odoo.addons.mrp.models.mrp_workorder import MrpWorkorder as mrpworkorder
 from odoo.exceptions import UserError
@@ -22,9 +25,12 @@ class MrpWorkorder(models.Model):
     def _get_default_access_token(self):
         return str(uuid.uuid4())
 
+    employee_id = fields.Many2one('hr.employee', string='Worker')
     work_component = fields.Boolean('Component', help='Please checked it if work with component')
     # work_production = fields.Boolean('Combination', help='Please checked it if work with pair product/component')
     use_bins = fields.Boolean('Bins', help='Please checked it if work with bins')
+    consume_additional = fields.Boolean('Additional consume', default=False,
+                                        help='Press to consume additional products that are not on BoM')
     final_component = fields.Integer('Component Lot/SN Count', track_visibility="onchange",
                                      compute="_compute_final_component")
     final_lot_id = fields.Many2one(track_visibility="onchange")
@@ -55,6 +61,11 @@ class MrpWorkorder(models.Model):
     def toggle_work_component(self):
         for record in self:
             record.work_component = not record.work_component
+
+    @api.multi
+    def toggle_additional_consume(self):
+        for record in self:
+            record.consume_additional = not record.consume_additional
 
     # @api.multi
     # def toggle_work_production(self):
@@ -104,10 +115,10 @@ class MrpWorkorder(models.Model):
     #         if self._context.get('emulate_scanner'):
     #             record.on_barcode_scanned(record.final_lot_id)
 
-    @api.onchange('_barcode_scanned')
-    @api.depends('active_move_line_ids')
-    def _on_barcode_scanned(self):
-        return super(MrpWorkorder, self)._on_barcode_scanned()
+    # @api.onchange('_barcode_scanned')
+    # @api.depends('active_move_line_ids')
+    # def _on_barcode_scanned(self):
+    #     return super(MrpWorkorder, self)._on_barcode_scanned()
 
     def action_open_wizard_view_stock_picking_add_product(self):
         action = self.env.ref('barcode_mrp_workorder.act_open_wizard_view_stock_picking_add_product').read()[0]
@@ -146,14 +157,14 @@ class MrpWorkorder(models.Model):
     @api.multi
     def end_all(self):
         ret = super(MrpWorkorder, self).end_all()
-        for workorder in self:
-            filtered_lots = workorder.active_move_line_ids.filtered(lambda r: r.lot_id != False)
-            if filtered_lots:
-                reserved_lots = workorder.r_move_line_ids.filtered(
-                    lambda r: r.lot_id.id not in [x.lot_id.id for x in filtered_lots])
-                if not reserved_lots:
-                    raise UserError(_(
-                        'Using LOT/SN cannot found in this locations. Please goto Manufacture order and remove wrong data.'))
+        #for workorder in self:
+        #    filtered_lots = workorder.active_move_line_ids.filtered(lambda r: r.lot_id != False)
+        #    if filtered_lots:
+        #        reserved_lots = workorder.r_move_line_ids.filtered(
+        #            lambda r: r.lot_id.id not in [x.lot_id.id for x in filtered_lots])
+        #        if not reserved_lots:
+        #            raise UserError(_(
+        #                'Using LOT/SN cannot found in this locations. Please goto Manufacture order and remove wrong data.'))
         return ret
 
     def _update_production_datails(self, move_ids):
@@ -316,9 +327,11 @@ class MrpWorkorder(models.Model):
                             self.production_id.production_line_ids = update_values
 
         # Transfer quantities from temporary to final move lots or make them final
+        move_line_losses = self.env['stock.move.line']
         for move_line in self.active_move_line_ids:
             # use pre record production
             if not self._pre_record_production(move_line):
+                move_line_losses |= move_line
                 continue
             # Check if move_line already exists
             if move_line.qty_done <= 0:  # rounding...
@@ -339,6 +352,8 @@ class MrpWorkorder(models.Model):
             else:
                 move_line.lot_produced_id = self.final_lot_id.id
                 move_line.done_wo = True
+        if move_line_losses:
+            move_line_losses.unlink()
         # tab
         # record all movement in history
         for move_line in self.active_move_line_ids:
@@ -428,8 +443,77 @@ class MrpWorkorder(models.Model):
 
         if float_compare(self.qty_produced, self.production_id.product_qty, precision_rounding=rounding) >= 0:
             self.button_finish()
-        _logger.info("FINAL %s:%s %s" % (
-        self.qty_producing, self.qty_produced, self.product_id and self.product_id.name or "no product"))
+        _logger.info("FINAL %s:%s %s" % (self.qty_producing, self.qty_produced, self.product_id and self.product_id.name or "no product"))
+        return True
+
+    @api.multi
+    def button_start(self):
+        self.ensure_one()
+        # As button_start is automatically called in the new view
+        if self.state in ('done', 'cancel'):
+            return True
+
+        # Need a loss in case of the real time exceeding the expected
+        timeline = self.env['mrp.workcenter.productivity']
+        if self.duration < self.duration_expected:
+            loss_id = self.env['mrp.workcenter.productivity.loss'].search([('loss_type','=','productive')], limit=1)
+            if not len(loss_id):
+                raise UserError(_("You need to define at least one productivity loss in the category 'Productivity'. Create one from the Manufacturing app, menu: Configuration / Productivity Losses."))
+        else:
+            loss_id = self.env['mrp.workcenter.productivity.loss'].search([('loss_type','=','performance')], limit=1)
+            if not len(loss_id):
+                raise UserError(_("You need to define at least one productivity loss in the category 'Performance'. Create one from the Manufacturing app, menu: Configuration / Productivity Losses."))
+        for workorder in self:
+            if workorder.production_id.state != 'progress':
+                workorder.production_id.write({
+                    'state': 'progress',
+                    'date_start': self._context.get('start_time') or datetime.now(),
+                })
+            time_id = timeline.create({
+                'workorder_id': workorder.id,
+                'workcenter_id': workorder.workcenter_id.id,
+                'description': _('Time Tracking: [%s] %s') % (workorder.employee_id.name, self.env.user.name),
+                'loss_id': loss_id[0].id,
+                'date_start': self._context.get('start_time') or datetime.now(),
+                'user_id': self.env.user.id,
+                'employee_id': workorder.employee_id and workorder.employee_id.id or False,
+            })
+            workorder.workcenter_id.time_ids |= time_id
+        return self.write({'state': 'progress',
+                    'date_start': self._context.get('start_time') or datetime.now(),
+        })
+
+    @api.multi
+    def end_previous(self, doall=False):
+        """
+        @param: doall:  This will close all open time lines on the open work orders when doall = True, otherwise
+        only the one of the current user
+        """
+        # TDE CLEANME
+        timeline_obj = self.env['mrp.workcenter.productivity']
+        domain = [('workorder_id', 'in', self.ids), ('date_end', '=', False)]
+        if not doall:
+            domain.append(('user_id', '=', self.env.user.id))
+        not_productive_timelines = timeline_obj.browse()
+        for timeline in timeline_obj.search(domain, limit=None if doall else 1):
+            wo = timeline.workorder_id
+            if wo.duration_expected <= wo.duration:
+                if timeline.loss_type == 'productive':
+                    not_productive_timelines += timeline
+                timeline.write({'date_end': fields.Datetime.now()})
+            else:
+                maxdate = fields.Datetime.from_string(timeline.date_start) + relativedelta(minutes=int(wo.duration_expected - wo.duration))
+                enddate = self._context.get('end_time') or datetime.now()
+                if maxdate > enddate:
+                    timeline.write({'date_end': enddate})
+                else:
+                    timeline.write({'date_end': maxdate})
+                    not_productive_timelines += timeline.copy({'date_start': maxdate, 'date_end': enddate})
+        if not_productive_timelines:
+            loss_id = self.env['mrp.workcenter.productivity.loss'].search([('loss_type', '=', 'performance')], limit=1)
+            if not len(loss_id):
+                raise UserError(_("You need to define at least one unactive productivity loss in the category 'Performance'. Create one from the Manufacturing app, menu: Configuration / Productivity Losses."))
+            not_productive_timelines.write({'loss_id': loss_id.id})
         return True
 
     def _check_product_create(self, lot, product, use_date):
@@ -444,6 +528,7 @@ class MrpWorkorder(models.Model):
     def _check_product(self, product, qty=1.0, lot=False, code=False, use_date=False):
         lot_obj = self.env['stock.production.lot']
         location_id = self.production_id.location_dest_id
+        lot_id = False
         # _logger.info("SCANNED PRODUCT %s::%s" % (product, lot))
         if lot:
             if code:
@@ -456,21 +541,22 @@ class MrpWorkorder(models.Model):
                 ('product_id', '=', product.id),
                 ('quantity', '>', 0),
             ], limit=1)
-            if product.tracking == 'serial' and (lot_id or available_quants):
-                # check again for final lots if there no raise
+            if product.tracking in ('serial', 'lot') and (lot_id or available_quants):
+                # check again for final lots if there is no raise
                 final_lots = self.env['stock.move.line'].search(
                     ['|', ('move_id.raw_material_production_id', '=', self.production_id.id),
                      ('move_id.production_id', '=', self.production_id.id), ('move_id.workorder_id', '=', self.id)])
                 # _logger.info("SERIAL %s:%s" % (available_quants.ids, final_lots.filtered(lambda r: r.lot_produced_id.id == lot_id.id).ids))
-                if len(final_lots.filtered(lambda r: r.lot_produced_id.id == lot_id.id).ids) > 0 or len(
-                    available_quants.ids) > 0:
+                if len(final_lots.filtered(lambda r: r.lot_produced_id.id == lot_id.id).ids) > 0 \
+                        or len(available_quants.ids) > 0:
                     return False
-            elif not lot_id:
+            elif not lot_id and self.consume_additional and product.tracking in ('serial', 'lot'):
                 # create only on first wo
                 lot_id = lot_obj.create(self._check_product_create(lot, product, use_date))
+            else:
+                return False
         else:
-            # create only on first wo
-            lot_id = lot_obj.create(self._check_product_create(lot, product, use_date))
+            return False
         if product.tracking == 'serial':
             self.qty_producing = 1.0
         else:
@@ -511,7 +597,7 @@ class MrpWorkorder(models.Model):
                     lot_id = lot_obj.search([('product_id', '=', product.id), ('name', '=', lot)])
                 else:
                     lot_id = lot_id[0].lot_id
-            if not lot_id:
+            if not lot_id and self.consume_additional:
                 lot_id = lot_obj.create({'name': lot, 'ref': code, 'product_id': product.id, 'use_date': use_date})
                 corresponding_ml.write({'lot_id': lot_id.id})
             # _logger.info("COMPONENT_LOT %s:%s" % (lot_id.name, corresponding_ml.product_id.display_name))
@@ -526,8 +612,9 @@ class MrpWorkorder(models.Model):
             corresponding_ml = corresponding_ml_lot
         else:
             if self.use_bins:
+                # add lot only on line that has no lot
                 corresponding_ml = self.active_move_line_ids.filtered(
-                    lambda ml: ml.product_id.id == product.id and ml.lots_visible)
+                    lambda ml: ml.product_id.id == product.id and not ml.lot_id and ml.lots_visible)
             else:
                 corresponding_ml = corresponding_ml[0] if corresponding_ml else False
 
@@ -535,27 +622,37 @@ class MrpWorkorder(models.Model):
             corresponding_ml.write({'lot_id': lot_id.id})
 
         if corresponding_ml:
-            if raw_corresponding_ml and not raw_corresponding_ml.product_id.tracking == 'serial':
-                qty = raw_corresponding_ml.product_uom_qty / self.qty_production
+            if raw_corresponding_ml and not raw_corresponding_ml[
+                                                0].product_id.tracking == 'serial':  # only lots can have multiple mls
+                qty = sum(sm.product_uom_qty for sm in raw_corresponding_ml) / self.qty_production
             if lot_id and qty:
                 corresponding_ml.qty_done = qty
             elif lot_id and not qty:
                 pass
             else:
                 corresponding_ml.qty_done += qty
-        else:
+            # corresponding_ml.onchange_serial_number()
+        elif self.consume_additional and not corresponding_ml:
             available_quants = False
             picking_type_id = self.production_id.picking_type_id
             location_id = self.production_id.location_src_id
-            if lot:
+            tracked_moves = self.move_raw_ids.filtered(lambda move: move.state not in ('done', 'cancel')
+                                                                    and move.product_id.tracking != 'none'
+                                                                    and move.product_id.id == product.id
+                                                                    and move.bom_line_id)
+            qty = tracked_moves and tracked_moves[0].unit_factor * self.qty_producing or 0.0
+
+            if tracked_moves:
+                location_id = tracked_moves[0].location_id
+
+            if lot and not qty:
                 available_quants = self.env['stock.quant'].search([
                     ('lot_id', '=', lot_id.id),
                     ('location_id', 'child_of', location_id.id),
                     ('product_id', '=', product.id),
                     ('quantity', '>', 0),
                 ], limit=1)
-                # if available_quants:
-                #    self.location_id = available_quants.location_id.id
+
             picking_type_lots = (picking_type_id.use_create_lots or picking_type_id.use_existing_lots)
             new_line = self.active_move_line_ids.new({
                 'product_id': product.id,
@@ -567,20 +664,30 @@ class MrpWorkorder(models.Model):
                 'date': fields.datetime.now(),
                 'lot_id': lot_id and lot_id.id,
                 'split_lot_id': lot_id and lot_id.id,
+                'move_id': raw_corresponding_ml and raw_corresponding_ml.id or False,
             })
             self.active_move_line_ids += new_line
             corresponding_ml = new_line
+        else:
+            return False
+
         if lot_id and product and self.use_bins:
-            lot = self.production_id.split_lot_ids.filtered(
-                lambda r: r.lot_id.id != lot_id.id and r.product_id.id == product.id and r.workorder_id.id == self.id)
-            if len(lot.ids) == 0:
-                lot.create({'production_id': self.production_id.id, 'lot_id': lot_id.id, 'product_id': product.id})
+            # add lot into bins only if lot is not already in bins
+            bins_lots = self.production_id.split_lot_ids.filtered(lambda r: r.lot_id.id == lot_id.id and
+                                                                            r.product_id.id == product.id and
+                                                                            r.workorder_id.id == self.id)
+            if len(bins_lots.ids) == 0 and product.tracking == 'lot':
+                data = lambda: None
+                data.product_id = product
+                data.lot_id = lot_id
+                bins_lots.create(
+                    self.env['stock.production.lot.save'].get_split_lot_value(data, self))
         if corresponding_ml:
             corresponding_ml.onchange_serial_number()
         return True
 
-    @api.depends('active_move_line_ids')
     def on_barcode_scanned(self, barcode):
+        title = _('Wrong barcode')
         message = _('The barcode "%(barcode)s" doesn\'t correspond to a proper product, package or location.')
         picking_type_id = self.production_id.picking_type_id
         if not picking_type_id.barcode_nomenclature_id:
@@ -597,10 +704,11 @@ class MrpWorkorder(models.Model):
 
         else:
             parsed_result = picking_type_id.barcode_nomenclature_id.parse_barcode(barcode)
+            _logger.info("PARCE %s" % parsed_result)
             if parsed_result['type'] in ['product']:
                 product_barcode = parsed_result['base_code']
                 qty = 1.0
-                lot = parsed_result['lot']
+                lot = parsed_result['lot'] or parsed_result['base_code']
                 code = parsed_result['code']
                 use_date = parsed_result.get('use_date', False) and parsed_result['use_date'] or False
                 product = self.env['product.product'].search(
@@ -626,7 +734,7 @@ class MrpWorkorder(models.Model):
                         return
 
             if parsed_result['type'] in ['lot']:
-                product = self.product_id
+                product_ids = self.production_id.move_raw_ids.mapped('product_id')
                 location_id = self.production_id.location_src_id
                 qty = 1.0
                 use_date = False
@@ -634,131 +742,67 @@ class MrpWorkorder(models.Model):
                 code = parsed_result['code']
                 if parsed_result['encoding'] == 'any':
                     lot = code
-                product_ids = [x.product_id.id for x in self.move_raw_ids]
-                # _logger.info("PARCE %s" % parsed_result)
-                # if self.work_production or parsed_result['sub_type'] == 'pair':
-                #     if self._check_product(product, qty, lot, code, use_date):
-                #         rtrn = False
-                #         available_quants = False
-                #         products = []
-                #         available = []
-                #         # first pass check in reserved material
-                #         tracked_moves = self.active_move_line_ids.filtered(lambda move: move.state not in ('done',
-                #                                                                                            'cancel') and move.product_id.tracking != 'none' and move.product_id != self.production_id.product_id)
-                #         lot_id = tracked_moves.filtered(lambda r: r.lot_id and r.lot_id.name == lot)
-                #         if lot_id:
-                #             available_quants = qty = lot_id[0].unit_factor * self.qty_producing
-                #             use_date = lot_id[0].lot_id.use_date
-                #             product = lot_id[0].product_id
-                #             products.append(product)
-                #             available.append(product.id)
-                #         # second pass check in all materials
-                #         if not lot_id:
-                #             lot_id = self.env['stock.production.lot'].search(
-                #                 [('name', '=', lot), ('product_id', 'in', product_ids)],
-                #                 limit=1)  # Logic by product but search by lot in existing lots
-                #             if len([x.id for x in lot_id]) == 1:
-                #                 product = self.env['product.product'].browse([lot_id.product_id.id])
-                #                 available_quants = self.env['stock.quant'].search([
-                #                     ('lot_id', '=', lot_id.id),
-                #                     ('location_id', 'child_of', location_id.id),
-                #                     ('product_id', '=', product.id),
-                #                     ('quantity', '>', 0),
-                #                 ])
-                #             use_date = lot_id.use_date
-                #             if available_quants:
-                #                 qty = sum(x.quantity for x in available_quants) or 1.0
-                #             else:
-                #                 qty = 1.0
-                #             product = lot_id.product_id
-                #             products.append(product)
-                #             available.append(product.id)
-                #         if len(tracked_moves) > len(available):
-                #             ml_all = self.active_move_line_ids.filtered(lambda
-                #                                                             ml: ml.product_id != self.production_id.product_id and ml.lots_visible and not ml.lot_id and ml.product_id.id not in available)
-                #             if ml_all:
-                #                 qty = False
-                #                 use_date = False
-                #                 code = False
-                #                 for ml in ml_all:
-                #                     products.append(ml.product_id)
-                #         for product in products:
-                #             _logger.info("PRODUCT %s:%s" % (lot, product.display_name))
-                #             self._check_component(product, qty, lot, code, use_date)
-                #         return
-                # elif self.work_component or not parsed_result['sub_type'] or parsed_result['sub_type'] == 'component':
-                if self.work_component or parsed_result['sub_type'] == 'component':
-                    rtrn = False
-                    lot_id = self.env['stock.production.lot'].search([('name', '=', lot), (
-                        'product_id', 'in', product_ids)])  # Logic by product but search by lot in existing lots
-                    if len(lot_id.ids) >= 1:
-                        _logger.info("PRODUCTS %s(%s)" % (product_ids, lot_id.name))
-                        for line in lot_id:
-                            product = line.product_id
-                            # product = self.env['product.product'].browse([line.product_id.id])
-                            available_quants = self.env['stock.quant'].search([
-                                ('lot_id', '=', line.id),
-                                ('location_id', 'child_of', location_id.id),
-                                ('product_id', '=', product.id),
-                                ('quantity', '>', 0),
-                            ])
-                            use_date = line.use_date
-                            qty = sum(x.quantity for x in available_quants) or 1.0
-                            if self._check_component(product, qty, lot, code, use_date):
-                                return
-                        return
-                    else:
-                        if self._context.get('consume_additional', False):
-                            product = self.active_move_line_ids and self.active_move_line_ids[0].product_id or False
-                            if product:
-                                lot_id = self.env['stock.production.lot'].create(
-                                    {'name': lot, 'product_id': product.id})
-                                if self._check_component(product, qty, lot, code, use_date):
-                                    return
 
-                        # ml = self.active_move_line_ids.filtered(lambda ml: ml.lots_visible and not ml.lot_id)[0]
-                        # if ml:
-                        #   product = ml and ml[0].product_id
-                        # else:
+                if self.work_component or parsed_result['sub_type'] == 'component':
+                    lot_ids = self.env['stock.production.lot'].search([('name', '=', lot), (
+                        'product_id', 'in', product_ids.ids)])  # Logic by product but search by lot in existing lots
+                    checked_product_ids = {}
+                    for lot_id in lot_ids:
+                        product = lot_id.product_id
+                        checked_product_ids[product] = self._check_component(product, qty, lot, code, use_date)
+
+                    product = self.active_move_line_ids and self.active_move_line_ids[0].product_id or False
+                    if self._context.get('consume_additional', False) and not checked_product_ids.get(product):
+                        self.env['stock.production.lot'].create({'name': lot, 'product_id': product.id})
+                        checked_product_ids[product] = self._check_component(product, qty, lot, code, use_date)
+
+                    if not any([not x for x in checked_product_ids.values()]):
+                        self.toggle_work_component()
                         return
+                    if not self.consume_additional:
+                        title = _("Unable to add lot for consumption")
+                        message = _('Follow is not defined for consumption.'
+                                    '\nLot {0}'
+                                    '\nfor products {1}.'
+                                    '\nFirst enable adding products that are not on BoM'). \
+                            format(lot, '\n'.join([product_id.display_name
+                                                   for product_id, value in checked_product_ids.items() if not value]))
+                    else:
+                        message += '\n%s' % '\n'.join(
+                            [product_id.display_name for product_id, value in checked_product_ids.items() if not value])
+
                 elif not self.work_component or parsed_result['sub_type'] == 'product':
-                    if self._check_product(product, qty, lot, code, use_date):
-                        if self.production_id.product_id.tracking == 'serial':
+                    if self._check_product(self.product_id, qty, lot, code, use_date):
+                        if self.production_id.product_id.tracking in ('serial', 'lot'):
                             # and not self.work_component and not self.work_production:
                             # add functionality to search for paring in bom or components lines
                             if any([x for x in self.move_raw_ids if x.work_production]):
-                                if self._check_component(product, qty, lot, use_date, work_production=True):
+                                checked_product_ids = {}
+                                for product in self.production_id.move_raw_ids. \
+                                    filtered(lambda r: r.work_production).mapped('product_id'):
+                                    checked_product_ids[product] = self._check_component(product, qty, lot, use_date,
+                                                                                         work_production=True)
+                                if not any([not x for x in checked_product_ids.values()]):
                                     return
-                            # self.work_component = True
-                        return
-                    else:
-                        message = _('The barcode "%(barcode)s" maybe is serial and is added to a product')
-                else:
-                    lot_id = self.env['stock.production.lot']. \
-                        search([('name', '=', lot), ('product_id', 'in', product_ids)],
-                               limit=1)  # Logic by product but search by lot in existing lots
-                    if len([x.id for x in lot_id]) == 1:
-                        product = self.env['product.product'].browse([lot_id.product_id.id])
-                        available_quants = self.env['stock.quant'].search([
-                            ('lot_id', '=', lot_id.id),
-                            ('location_id', 'child_of', location_id.id),
-                            ('product_id', '=', product.id),
-                            ('quantity', '>', 0),
-                        ])
-                        use_date = lot_id.use_date
-                        qty = sum(x.quantity for x in available_quants) or 1.0
-                        product = lot_id.product_id
-                    else:
-                        ml = self.active_move_line_ids.filtered(lambda ml: ml.lots_visible and not ml.lot_id)[0]
-                        if ml:
-                            product = ml and ml[0].product_id
-                        else:
-                            return
-                    if self._check_component(product, qty, lot, code, use_date):
-                        return
+                                if not self.consume_additional:
+                                    title = _("Unable to add lot for consumption")
+                                    message = _('Follow is not defined for consumption.'
+                                                '\nLot {0}'
+                                                '\nfor products {1}.'
+                                                '\nFirst enable adding products that are not on BoM'). \
+                                        format(lot, '\n'.join([product_id.display_name
+                                                               for product_id, value in checked_product_ids.items() if
+                                                               not value]))
+                                else:
+                                    message += '\n%s' % '\n'.join(
+                                        [product_id.display_name
+                                         for product_id, value in checked_product_ids.items() if not value])
+                            else:
+                                self.toggle_work_component()
+                                return
 
         return {'warning': {
-            'title': _('Wrong barcode'),
+            'title': title,
             'message': message % {
                 'barcode': barcode}
         }}
@@ -868,4 +912,6 @@ class MrpWorkorder(models.Model):
 
 
 mrpworkorder.record_production = MrpWorkorder.record_production
+mrpworkorder.button_start = MrpWorkorder.button_start
+mrpworkorder.end_previous = MrpWorkorder.end_previous
 mrpworkorder._generate_lot_ids = MrpWorkorder._generate_lot_ids

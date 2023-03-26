@@ -157,7 +157,7 @@ class MrpWorkorder(models.Model):
     @api.multi
     def end_all(self):
         ret = super(MrpWorkorder, self).end_all()
-        #for workorder in self:
+        # for workorder in self:
         #    filtered_lots = workorder.active_move_line_ids.filtered(lambda r: r.lot_id != False)
         #    if filtered_lots:
         #        reserved_lots = workorder.r_move_line_ids.filtered(
@@ -443,7 +443,8 @@ class MrpWorkorder(models.Model):
 
         if float_compare(self.qty_produced, self.production_id.product_qty, precision_rounding=rounding) >= 0:
             self.button_finish()
-        _logger.info("FINAL %s:%s %s" % (self.qty_producing, self.qty_produced, self.product_id and self.product_id.name or "no product"))
+        _logger.info("FINAL %s:%s %s" % (
+            self.qty_producing, self.qty_produced, self.product_id and self.product_id.name or "no product"))
         return True
 
     @api.multi
@@ -456,13 +457,15 @@ class MrpWorkorder(models.Model):
         # Need a loss in case of the real time exceeding the expected
         timeline = self.env['mrp.workcenter.productivity']
         if self.duration < self.duration_expected:
-            loss_id = self.env['mrp.workcenter.productivity.loss'].search([('loss_type','=','productive')], limit=1)
+            loss_id = self.env['mrp.workcenter.productivity.loss'].search([('loss_type', '=', 'productive')], limit=1)
             if not len(loss_id):
-                raise UserError(_("You need to define at least one productivity loss in the category 'Productivity'. Create one from the Manufacturing app, menu: Configuration / Productivity Losses."))
+                raise UserError(
+                    _("You need to define at least one productivity loss in the category 'Productivity'. Create one from the Manufacturing app, menu: Configuration / Productivity Losses."))
         else:
-            loss_id = self.env['mrp.workcenter.productivity.loss'].search([('loss_type','=','performance')], limit=1)
+            loss_id = self.env['mrp.workcenter.productivity.loss'].search([('loss_type', '=', 'performance')], limit=1)
             if not len(loss_id):
-                raise UserError(_("You need to define at least one productivity loss in the category 'Performance'. Create one from the Manufacturing app, menu: Configuration / Productivity Losses."))
+                raise UserError(
+                    _("You need to define at least one productivity loss in the category 'Performance'. Create one from the Manufacturing app, menu: Configuration / Productivity Losses."))
         for workorder in self:
             if workorder.production_id.state != 'progress':
                 workorder.production_id.write({
@@ -480,8 +483,8 @@ class MrpWorkorder(models.Model):
             })
             workorder.workcenter_id.time_ids |= time_id
         return self.write({'state': 'progress',
-                    'date_start': self._context.get('start_time') or datetime.now(),
-        })
+                           'date_start': self._context.get('start_time') or datetime.now(),
+                           })
 
     @api.multi
     def end_previous(self, doall=False):
@@ -502,7 +505,8 @@ class MrpWorkorder(models.Model):
                     not_productive_timelines += timeline
                 timeline.write({'date_end': fields.Datetime.now()})
             else:
-                maxdate = fields.Datetime.from_string(timeline.date_start) + relativedelta(minutes=int(wo.duration_expected - wo.duration))
+                maxdate = fields.Datetime.from_string(timeline.date_start) + relativedelta(
+                    minutes=int(wo.duration_expected - wo.duration))
                 enddate = self._context.get('end_time') or datetime.now()
                 if maxdate > enddate:
                     timeline.write({'date_end': enddate})
@@ -512,7 +516,8 @@ class MrpWorkorder(models.Model):
         if not_productive_timelines:
             loss_id = self.env['mrp.workcenter.productivity.loss'].search([('loss_type', '=', 'performance')], limit=1)
             if not len(loss_id):
-                raise UserError(_("You need to define at least one unactive productivity loss in the category 'Performance'. Create one from the Manufacturing app, menu: Configuration / Productivity Losses."))
+                raise UserError(
+                    _("You need to define at least one unactive productivity loss in the category 'Performance'. Create one from the Manufacturing app, menu: Configuration / Productivity Losses."))
             not_productive_timelines.write({'loss_id': loss_id.id})
         return True
 
@@ -541,15 +546,22 @@ class MrpWorkorder(models.Model):
                 ('product_id', '=', product.id),
                 ('quantity', '>', 0),
             ], limit=1)
-            if product.tracking in ('serial', 'lot') and (lot_id or available_quants):
+            if product.tracking == 'serial' and (lot_id or available_quants):
                 # check again for final lots if there is no raise
-                final_lots = self.env['stock.move.line'].search(
-                    ['|', ('move_id.raw_material_production_id', '=', self.production_id.id),
-                     ('move_id.production_id', '=', self.production_id.id), ('move_id.workorder_id', '=', self.id)])
+                # new version
+                final_lots = self.production_id.finished_move_line_ids. \
+                    filtered(lambda r: r.move_id.workorder_id == self
+                                       and r.product_id == product and r.qty_done != 0 and r.lot_produced_id == lot_id)
+                # old version
+                # final_lots = self.env['stock.move.line'].search(
+                #     ['|', ('move_id.raw_material_production_id', '=', self.production_id.id),
+                #      ('move_id.production_id', '=', self.production_id.id), ('move_id.workorder_id.id', '=', self.id)])
                 # _logger.info("SERIAL %s:%s" % (available_quants.ids, final_lots.filtered(lambda r: r.lot_produced_id.id == lot_id.id).ids))
-                if len(final_lots.filtered(lambda r: r.lot_produced_id.id == lot_id.id).ids) > 0 \
-                        or len(available_quants.ids) > 0:
-                    return False
+                # if len(final_lots.filtered(lambda r: r.lot_produced_id.id == lot_id.id).ids) > 0 \
+                if len(final_lots.ids) > 0 or len(available_quants.ids) > 0:
+                    raise UserError(_('Your are try to add final product %s lot: %s again') %
+                                    (product.display_name, lot_id.name))
+                    # return False
             elif not lot_id and self.consume_additional and product.tracking in ('serial', 'lot'):
                 # create only on first wo
                 lot_id = lot_obj.create(self._check_product_create(lot, product, use_date))
@@ -757,7 +769,7 @@ class MrpWorkorder(models.Model):
                         checked_product_ids[product] = self._check_component(product, qty, lot, code, use_date)
 
                     if not any([not x for x in checked_product_ids.values()]):
-                        self.toggle_work_component()
+                        # self.toggle_work_component()
                         return
                     if not self.consume_additional:
                         title = _("Unable to add lot for consumption")

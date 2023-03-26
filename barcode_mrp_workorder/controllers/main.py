@@ -13,11 +13,13 @@ _logger = logging.getLogger(__name__)
 
 class WebsiteWorkorder(http.Controller):
 
+    # The lot_ref is final product lot/sn and lot_id is component lot/sn, product_id is default_code of final product
+    # employee_id is worker id and workorder_id is found id of work order in odoo by of token
     def _workorder_update_json(self, workorder_id, product_id, lot_ref, lot_id, employee_id=None):
         seconds = time.time()
         _logger.info(
             "WO %s:%s:%s:%s:%s:%s" % (workorder_id.ids, product_id, workorder_id.product_id.default_code, lot_ref,
-                                      lot_id, employee_id and employee_id.name))
+                                      lot_id, employee_id))
         if workorder_id and workorder_id.product_id.default_code == product_id:
             if len(workorder_id.ids) > 1:
                 retrn = {'error': {
@@ -34,6 +36,10 @@ class WebsiteWorkorder(http.Controller):
                 workorder_id.work_production = False
                 if not lot_ref:
                     lot_ref = lot_id
+
+                if isinstance(lot_ref, str) and lot_ref.find(';') != -1:
+                    lot_ref = lot_ref.split(';')[0]
+
                 if workorder_id.product_id.tracking in ['lot', 'serial']:
                     final_lot_id = workorder_id.env['stock.production.lot'].search(
                         [('product_id', '=', workorder_id.product_id.id), ('name', '=', lot_ref)])
@@ -47,7 +53,8 @@ class WebsiteWorkorder(http.Controller):
                         'product_id': workorder_id.product_id.id,
                     })
                     if final_lot_id:
-                        workorder_id.final_lot_id = final_lot_id
+                        workorder_id.on_barcode_scanned(lot_ref)
+                        # workorder_id.final_lot_id = final_lot_id
                         retrn = False
                     else:
                         retrn = {'warning': {
@@ -58,6 +65,8 @@ class WebsiteWorkorder(http.Controller):
                     retrn = False
                 # retrn = workorder_id.on_barcode_scanned(lot_ref)
                 if not retrn or (retrn and not retrn.get('warning')):
+                    if isinstance(lot_id, str) and lot_id.find(';') != -1:
+                        lot_id = lot_id.split(';')[0]
                     workorder_id.work_component = True
                     retrn = workorder_id.with_context(
                         dict(workorder_id._context, consume_additional=True)).on_barcode_scanned(lot_id)
@@ -92,8 +101,13 @@ class WebsiteWorkorder(http.Controller):
             uid = request.session.authenticate(db, str(login), str(password))
             if uid:
                 workorder_ids = request.env['mrp.workorder'].search(
-                    [('product_id.default_code', 'ilike', str(product_id))])
+                    [('product_id.default_code', 'ilike', str(product_id)),
+                     ('state', 'not in', ('done', 'cancel'))])
+                #workorder_ids = request.env['mrp.workorder'].search(
+                #    [('product_id.default_code', 'ilike', str(product_id))])
                 if workorder_ids:
+                    _logger.info("WO: %s Product ID %s WOs: %s" % (search, product_id, workorder_ids))
+
                     return json.dumps({'ok': {"title": "Work orders",
                                               'message': {
                                                   "workorder": {x.id: x.name.split('(')[1][:-1] for x in workorder_ids},
